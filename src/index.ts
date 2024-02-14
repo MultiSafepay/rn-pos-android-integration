@@ -21,22 +21,39 @@ export function hello(): string {
   return RnPosAndroidIntegrationModule.hello();
 }
 
-interface InitiatePaymentRequest {
+export function canInitiatePayment(): Promise<boolean> {
+  return Platform.OS === "android"
+    ? RnPosAndroidIntegrationModule.canInitiatePayment()
+    : Promise.resolve(false);
+}
+
+interface InitiateManualPaymentRequest {
   orderId: string;
   description: string;
   serializedItems: string;
 }
-export function initiatePayment({
+export function initiateManualPayment({
   orderId,
   description,
   serializedItems,
-}: InitiatePaymentRequest): void {
+}: InitiateManualPaymentRequest): void {
   if (Platform.OS === "android") {
-    RnPosAndroidIntegrationModule.initiatePayment(
+    RnPosAndroidIntegrationModule.initiateManualPayment(
       orderId,
       description,
       serializedItems
     );
+  }
+}
+
+interface InitiateRemotePaymentRequest {
+  sessionId: string;
+}
+export function initiateRemotePayment({
+  sessionId,
+}: InitiateRemotePaymentRequest): void {
+  if (Platform.OS === "android") {
+    RnPosAndroidIntegrationModule.initiateRemotePayment(sessionId);
   }
 }
 

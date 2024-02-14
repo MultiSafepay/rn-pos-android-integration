@@ -1,15 +1,18 @@
 package expo.modules.rnposandroidintegration
 
-import android.app.Activity
 import android.util.Log
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-
+import expo.modules.kotlin.Promise
 
 class RnPosAndroidIntegrationModule : Module() {
   // Each module class must implement the definition function. The definition consists of components
   // that describes the module's functionality and behavior.
   // See https://docs.expo.dev/modules/module-api for more details about available components.
+
+  private val context get() = requireNotNull(appContext.reactContext)
+  private val intent get() = context.packageManager?.getLaunchIntentForPackage("com.multisafepay.pos.sunmi")
+
   override fun definition() = ModuleDefinition {
     // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
     // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
@@ -28,14 +31,21 @@ class RnPosAndroidIntegrationModule : Module() {
     Function("hello") {
       "Hello world! 👋"
     }
+
+    AsyncFunction("canInitiatePayment") { promise: Promise ->
+      if (intent != null) {
+        promise.resolve(true)
+      } else {
+        promise.resolve(false)
+      }
+    }
     
     // Defines a synchronous function that runs the native code on the different thread than the JavaScript runtime runs on.
-    Function("initiatePayment") { orderId: String, description: String, serializedItems: String ->
-      //val packageManager = appContext.activityProvider?.currentActivity?.packageManager
-      val reactContext = appContext.reactContext
-      val packageManager = reactContext?.packageManager
-      val intent = packageManager?.getLaunchIntentForPackage("com.multisafepay.pos.sunmi")
+    Function("initiateManualPayment") { orderId: String, description: String, serializedItems: String ->
+      val intent = intent
       val packageName = intent?.`package`
+
+      Log.d("pos-app-integration", "initiateManualPayment")
 
       if (packageName != null) {
         intent.setClassName(packageName, "com.multisafepay.pos.middleware.IntentActivity")
@@ -46,7 +56,26 @@ class RnPosAndroidIntegrationModule : Module() {
         intent.putExtra("order_id", orderId)
         intent.putExtra("order_description", description)
 
-        reactContext.startActivity(intent)
+        context.startActivity(intent)
+      } else {
+        Log.d("pos-app-integration", "❌ Intent with package not found")
+      }
+    }
+
+    // Defines a synchronous function that runs the native code on the different thread than the JavaScript runtime runs on.
+    Function("initiateRemotePayment") { sessionId: String ->
+      val intent = intent
+      val packageName = intent?.`package`
+
+      Log.d("pos-app-integration", "initiateRemotePayment")
+
+      if (packageName != null) {
+        intent.setClassName(packageName, "com.multisafepay.pos.middleware.IntentActivity")
+
+        intent.putExtra("package_name", packageName) // Callback package name
+        intent.putExtra("session_id", sessionId)
+
+        context.startActivity(intent)
       } else {
         Log.d("pos-app-integration", "❌ Intent with package not found")
       }
