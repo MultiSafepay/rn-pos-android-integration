@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "rn-pos-android-integration": ["../src/index"],
+      "rn-pos-android-integration/*": ["../src/*"]
+    }
+  }
+}
