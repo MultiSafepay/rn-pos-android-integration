@@ -1,7 +1,10 @@
 package expo.modules.rnposandroidintegration
 
+import android.app.Activity
+import android.util.Log
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+
 
 class RnPosAndroidIntegrationModule : Module() {
   // Each module class must implement the definition function. The definition consists of components
@@ -24,6 +27,29 @@ class RnPosAndroidIntegrationModule : Module() {
     // Defines a JavaScript synchronous function that runs the native code on the JavaScript thread.
     Function("hello") {
       "Hello world! 👋"
+    }
+    
+    // Defines a synchronous function that runs the native code on the different thread than the JavaScript runtime runs on.
+    Function("initiatePayment") { orderId: String, description: String, serializedItems: String ->
+      //val packageManager = appContext.activityProvider?.currentActivity?.packageManager
+      val reactContext = appContext.reactContext
+      val packageManager = reactContext?.packageManager
+      val intent = packageManager?.getLaunchIntentForPackage("com.multisafepay.pos.sunmi")
+      val packageName = intent?.`package`
+
+      if (packageName != null) {
+        intent.setClassName(packageName, "com.multisafepay.pos.middleware.IntentActivity")
+
+        intent.putExtra("package_name", packageName) // Callback package name
+        intent.putExtra("currency", "EUR")
+        intent.putExtra("items", serializedItems)
+        intent.putExtra("order_id", orderId)
+        intent.putExtra("order_description", description)
+
+        reactContext.startActivity(intent)
+      } else {
+        Log.d("pos-app-integration", "❌ Intent with package not found")
+      }
     }
 
     // Defines a JavaScript function that always returns a Promise and whose native code
