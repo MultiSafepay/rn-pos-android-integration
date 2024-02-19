@@ -27,33 +27,45 @@ export function canInitiatePayment(): Promise<boolean> {
     : Promise.resolve(false);
 }
 
+const currency = "EUR";
+
 interface InitiateManualPaymentRequest {
+  amount: number; // cents
   orderId: string;
   description: string;
-  serializedItems: string;
 }
 export function initiateManualPayment({
+  amount,
   orderId,
   description,
-  serializedItems,
 }: InitiateManualPaymentRequest): void {
   if (Platform.OS === "android") {
-    RnPosAndroidIntegrationModule.initiateManualPayment(
+    RnPosAndroidIntegrationModule.initiatePayment(
+      currency,
+      amount,
       orderId,
-      description,
-      serializedItems
+      description
     );
   }
 }
 
-interface InitiateRemotePaymentRequest {
+interface InitiateRemotePaymentRequest extends InitiateManualPaymentRequest {
   sessionId: string;
 }
 export function initiateRemotePayment({
+  amount,
+  orderId,
+  description,
   sessionId,
 }: InitiateRemotePaymentRequest): void {
   if (Platform.OS === "android") {
-    RnPosAndroidIntegrationModule.initiateRemotePayment(sessionId);
+    RnPosAndroidIntegrationModule.initiatePayment(
+      currency,
+      amount,
+      orderId,
+      description,
+      sessionId
+    );
   }
 }
 
