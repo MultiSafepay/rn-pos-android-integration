@@ -14,13 +14,6 @@ import {
 import RnPosAndroidIntegrationModule from "./RnPosAndroidIntegrationModule";
 import RnPosAndroidIntegrationView from "./RnPosAndroidIntegrationView";
 
-// Get the native constant value.
-export const PI = RnPosAndroidIntegrationModule.PI;
-
-export function hello(): string {
-  return RnPosAndroidIntegrationModule.hello();
-}
-
 export function canInitiatePayment(): Promise<boolean> {
   return Platform.OS === "android"
     ? RnPosAndroidIntegrationModule.canInitiatePayment()
@@ -29,44 +22,72 @@ export function canInitiatePayment(): Promise<boolean> {
 
 const currency = "EUR";
 
+export interface OrderItem {
+  name: string; // "Product 1"
+  unit_price: string; // "0.10"
+  quantity: string; // "1"
+  merchant_item_id?: string; // "749857"
+  tax?: string; // "3.90"
+}
+
 interface InitiateManualPaymentRequest {
-  amount: number; // cents
+  // amount: number; // cents
+  items: OrderItem[];
   orderId: string;
   description: string;
-}
-export function initiateManualPayment({
-  amount,
-  orderId,
-  description,
-}: InitiateManualPaymentRequest): void {
-  if (Platform.OS === "android") {
-    RnPosAndroidIntegrationModule.initiatePayment(
-      currency,
-      amount,
-      orderId,
-      description
-    );
-  }
 }
 
 interface InitiateRemotePaymentRequest extends InitiateManualPaymentRequest {
   sessionId: string;
 }
-export function initiateRemotePayment({
-  amount,
+
+interface InitiatePaymentRequest extends InitiateManualPaymentRequest {
+  sessionId?: string;
+}
+
+const initiatePayment = ({
+  items,
   orderId,
   description,
   sessionId,
-}: InitiateRemotePaymentRequest): void {
+}: InitiatePaymentRequest) => {
   if (Platform.OS === "android") {
+    const validItems = items.map((item) => {
+      return {
+        ...item,
+        ...{
+          merchant_item_id: item.merchant_item_id ?? `merchant-id-${item.name}`,
+          tax: item.tax ?? "0",
+        },
+      };
+    });
     RnPosAndroidIntegrationModule.initiatePayment(
       currency,
-      amount,
+      JSON.stringify(validItems),
       orderId,
       description,
       sessionId
     );
   }
+};
+
+export function initiateManualPayment({
+  // amount,
+  items,
+  orderId,
+  description,
+}: InitiateManualPaymentRequest): void {
+  initiatePayment({ items, orderId, description });
+}
+
+export function initiateRemotePayment({
+  // amount,
+  items,
+  orderId,
+  description,
+  sessionId,
+}: InitiateRemotePaymentRequest): void {
+  initiatePayment({ items, orderId, description, sessionId });
 }
 
 export async function setValueAsync(value: string) {

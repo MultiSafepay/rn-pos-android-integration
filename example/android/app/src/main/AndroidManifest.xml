@@ -4,9 +4,13 @@
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-  <queries>
+
+  <!-- <queries>
     <package android:name="com.multisafepay.pos.nokernels" />
     <package android:name="com.multisafepay.pos.sunmi" />
+  </queries> -->
+
+  <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
       <category android:name="android.intent.category.BROWSABLE"/>
