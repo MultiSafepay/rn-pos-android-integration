@@ -1,8 +1,4 @@
-import {
-  NativeModulesProxy,
-  EventEmitter,
-  Subscription,
-} from "expo-modules-core";
+import { EventEmitter, Subscription } from "expo-modules-core";
 import { Platform } from "react-native";
 
 // Import the native module. On web, it will be resolved to RnPosAndroidIntegration.web.ts
@@ -94,14 +90,15 @@ export async function setValueAsync(value: string) {
   return await RnPosAndroidIntegrationModule.setValueAsync(value);
 }
 
-const emitter = new EventEmitter(
-  RnPosAndroidIntegrationModule ?? NativeModulesProxy.RnPosAndroidIntegration
-);
+const emitter = new EventEmitter(RnPosAndroidIntegrationModule);
 
-export function addChangeListener(
+export function addTransactionListener(
   listener: (event: ChangeEventPayload) => void
 ): Subscription {
-  return emitter.addListener<ChangeEventPayload>("onChange", listener);
+  return emitter.addListener<ChangeEventPayload>(
+    "onTransactionChanged",
+    listener
+  );
 }
 
 export {

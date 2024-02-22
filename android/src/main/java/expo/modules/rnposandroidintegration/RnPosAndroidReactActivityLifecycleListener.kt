@@ -48,7 +48,6 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   }
 
   private fun receivedCallbackIntent(status: TransactionStatus) {
-    val integrationModule = RnPosAndroidIntegrationModule()
-    integrationModule.notifyAppUpdate(status)
+    Notifier.onTransactionStatusChanged(status)
   }
 }

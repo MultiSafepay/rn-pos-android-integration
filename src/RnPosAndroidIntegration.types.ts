@@ -1,5 +1,5 @@
 export type ChangeEventPayload = {
-  value: string;
+  status: "COMPLETED" | "CANCELLED" | "DECLINED" | "EXCEPTION";
 };
 
 export type RnPosAndroidIntegrationViewProps = {

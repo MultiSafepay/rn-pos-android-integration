@@ -52,6 +52,15 @@ export default function App() {
           console.error(e);
         }
       });
+
+    const suscription = RnPosAndroidIntegration.addTransactionListener(
+      ({ status }) => {
+        console.log("🚀🚀🚀", status);
+      }
+    );
+    return () => {
+      suscription.remove();
+    };
   }, []);
 
   return (

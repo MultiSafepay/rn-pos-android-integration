@@ -1,6 +1,7 @@
 package expo.modules.rnposandroidintegration
 
 import android.util.Log
+import androidx.core.os.bundleOf
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -16,9 +17,7 @@ class RnPosAndroidIntegrationModule : Module() {
   private val appPackageName get() = context.packageName
   private val intent get() = context.packageManager?.getLaunchIntentForPackage("com.multisafepay.pos.sunmi")
 
-  fun notifyAppUpdate(transactionStatus: TransactionStatus) {
-    // TODO: Send event to Javascript
-  }
+  private var observer: (status: TransactionStatus) -> Unit = {}
 
   override fun definition() = ModuleDefinition {
     // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
@@ -28,6 +27,19 @@ class RnPosAndroidIntegrationModule : Module() {
 
     // Defines event names that the module can send to JavaScript.
     Events(TRANSACTION_CHANGED_EVENT_NAME)
+
+    OnCreate {
+      observer = {
+        val value: Map<String, String> = mapOf("status" to it.toString())
+        this@RnPosAndroidIntegrationModule.sendEvent(TRANSACTION_CHANGED_EVENT_NAME, value)
+        Log.d(TRANSACTION_CHANGED_EVENT_NAME, value.toString())
+      }
+      Notifier.registerObserver(observer)
+    }
+
+    OnDestroy {
+      Notifier.deregisterObserver(observer)
+    }
 
     AsyncFunction("canInitiatePayment") { promise: Promise ->
       if (intent != null) {
@@ -64,8 +76,6 @@ class RnPosAndroidIntegrationModule : Module() {
       } else {
         Log.d("pos-app-integration", "❌ Intent with package not found")
       }
-
-
     }
 
     // Defines a JavaScript function that always returns a Promise and whose native code
