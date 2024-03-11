@@ -50,13 +50,11 @@ class RnPosAndroidIntegrationModule : Module() {
     }
 
     // Defines a synchronous function that runs the native code on the different thread than the JavaScript runtime runs on.
-    // Function("initiatePayment") { currency: String, amount: Int, orderId: String, description: String, sessionId: String? ->
     Function("initiatePayment") { currency: String, serializedItems: String, orderId: String, description: String, sessionId: String? ->
-      val intent = intent
+    val intent = intent
       val packageName = intent?.`package`
 
       Log.d("pos-app-integration", "packageName: $appPackageName")
-      //Log.d("pos-app-integration", "initiateManualPayment: currency=$currency, amount=$amount, orderId=$orderId, description=$description, sessionId=$sessionId")
       Log.d("pos-app-integration", "initiateManualPayment: currency=$currency, serializedItems=$serializedItems, orderId=$orderId, description=$description, sessionId=$sessionId")
 
       if (packageName != null) {

@@ -60,6 +60,7 @@ const initiatePayment = ({
     RnPosAndroidIntegrationModule.initiatePayment(
       currency,
       JSON.stringify(validItems),
+      // amount,
       orderId,
       description,
       sessionId
@@ -68,7 +69,6 @@ const initiatePayment = ({
 };
 
 export function initiateManualPayment({
-  // amount,
   items,
   orderId,
   description,
@@ -77,9 +77,8 @@ export function initiateManualPayment({
 }
 
 export function initiateRemotePayment({
-  // amount,
-  items,
   orderId,
+  items,
   description,
   sessionId,
 }: InitiateRemotePaymentRequest): void {

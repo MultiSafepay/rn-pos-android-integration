@@ -27,7 +27,14 @@ Run `npx pod-install` after installing the npm package.
 
 
 ### Configure for Android
-
+Do not forget to add to the Manifest the following block:
+```
+<queries>
+    <package android:name="com.multisafepay.pos.nokernels" />
+    <package android:name="com.multisafepay.pos.sunmi" />
+    <package android:name="com.multisafepay.pos.middleware.sunmi" />
+</queries>
+```
 
 
 # Contributing
