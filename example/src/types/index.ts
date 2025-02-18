@@ -20,14 +20,7 @@ export interface PretransactionResponse {
   error_info?: string;
 }
 
-type PaymentStatus =
-  | "initialized"
-  | "completed"
-  | "cancelled"
-  | "void"
-  | "expired"
-  | "declined"
-  | "uncleared";
+type PaymentStatus = 'initialized' | 'completed' | 'cancelled' | 'void' | 'expired' | 'declined' | 'uncleared';
 
 export interface TransactionResponse {
   financial_status: PaymentStatus;

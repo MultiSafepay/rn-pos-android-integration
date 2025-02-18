@@ -1,15 +1,15 @@
-import { Stack } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Colors from "src/utils/colors";
-import Storage from "src/utils/storage";
+import { Stack } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Colors from 'src/utils/colors';
+import Storage from 'src/utils/storage';
 
 const Settings = () => {
   const [apiKey, setApiKey] = useState<string | undefined>();
   const onSaveApiKey = useCallback((apiKey: string) => {
     Storage.storeApiKey(apiKey).catch((error) => {
-      Alert.alert("Error", (error as Error)?.message);
+      Alert.alert('Error', (error as Error)?.message);
     });
   }, []);
 
@@ -37,16 +37,16 @@ const Settings = () => {
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }}>
       <Stack.Screen
         options={{
-          title: "Settings",
+          title: 'Settings',
           headerStyle: { backgroundColor: Colors.secondary },
           headerTintColor: Colors.white,
           headerTitleStyle: {
-            fontWeight: "bold",
+            fontWeight: 'bold',
           },
         }}
       />
       <View style={{ margin: 15, padding: 15 }}>
-        <Text style={{ fontWeight: "bold", marginBottom: 10 }}>Api Key:</Text>
+        <Text style={{ fontWeight: 'bold', marginBottom: 10 }}>Api Key:</Text>
         <TextInput
           defaultValue={apiKey}
           placeholder="Enter your API key (LIVE)"
@@ -58,7 +58,7 @@ const Settings = () => {
           }}
           onEndEditing={({ nativeEvent }) => {
             if (__DEV__) {
-              console.log("Api key:", nativeEvent.text);
+              console.log('Api key:', nativeEvent.text);
             }
             onSaveApiKey(nativeEvent.text);
           }}

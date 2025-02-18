@@ -1,5 +1,13 @@
-import { requireNativeModule } from "expo-modules-core";
+import { NativeModule, requireNativeModule } from 'expo';
 
-// It loads the native module object from the JSI or falls back to
-// the bridge module (from NativeModulesProxy) if the remote debugger is on.
-export default requireNativeModule("RnPosAndroidIntegration");
+import { ChangeEventPayload } from './RnPosAndroidIntegration.types';
+
+declare class RnPosAndroidIntegrationModule extends NativeModule {
+  addListener<EventName extends 'onTransactionChanged'>(
+    eventName: EventName,
+    listener: (event: ChangeEventPayload) => void
+  ): { remove: () => void };
+}
+
+// This call loads the native module object from the JSI.
+export default requireNativeModule<RnPosAndroidIntegrationModule>('RnPosAndroidIntegration');
