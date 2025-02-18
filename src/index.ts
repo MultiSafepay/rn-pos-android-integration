@@ -1,22 +1,17 @@
-import { EventEmitter, Subscription } from "expo-modules-core";
-import { Platform } from "react-native";
+import { EventSubscription } from 'expo-modules-core';
+import { Platform } from 'react-native';
 
 // Import the native module. On web, it will be resolved to RnPosAndroidIntegration.web.ts
 // and on native platforms to RnPosAndroidIntegration.ts
-import {
-  ChangeEventPayload,
-  RnPosAndroidIntegrationViewProps,
-} from "./RnPosAndroidIntegration.types";
-import RnPosAndroidIntegrationModule from "./RnPosAndroidIntegrationModule";
-import RnPosAndroidIntegrationView from "./RnPosAndroidIntegrationView";
+import { ChangeEventPayload, RnPosAndroidIntegrationViewProps } from './RnPosAndroidIntegration.types';
+import RnPosAndroidIntegrationModule from './RnPosAndroidIntegrationModule';
+import RnPosAndroidIntegrationView from './RnPosAndroidIntegrationView';
 
 export function canInitiatePayment(): Promise<boolean> {
-  return Platform.OS === "android"
-    ? RnPosAndroidIntegrationModule.canInitiatePayment()
-    : Promise.resolve(false);
+  return Platform.OS === 'android' ? RnPosAndroidIntegrationModule.canInitiatePayment() : Promise.resolve(false);
 }
 
-const currency = "EUR";
+const currency = 'EUR';
 
 export interface OrderItem {
   name: string; // "Product 1"
@@ -27,7 +22,7 @@ export interface OrderItem {
 }
 
 interface InitiateManualPaymentRequest {
-  // amount: number; // cents
+  amount: number; // cents
   items: OrderItem[];
   orderId: string;
   description: string;
@@ -41,26 +36,21 @@ interface InitiatePaymentRequest extends InitiateManualPaymentRequest {
   sessionId?: string;
 }
 
-const initiatePayment = ({
-  items,
-  orderId,
-  description,
-  sessionId,
-}: InitiatePaymentRequest) => {
-  if (Platform.OS === "android") {
+const initiatePayment = ({ items, amount, orderId, description, sessionId }: InitiatePaymentRequest) => {
+  if (Platform.OS === 'android') {
     const validItems = items.map((item) => {
       return {
         ...item,
         ...{
           merchant_item_id: item.merchant_item_id ?? `merchant-id-${item.name}`,
-          tax: item.tax ?? "0",
+          tax: item.tax ?? '0',
         },
       };
     });
     RnPosAndroidIntegrationModule.initiatePayment(
       currency,
+      amount,
       JSON.stringify(validItems),
-      // amount,
       orderId,
       description,
       sessionId
@@ -68,40 +58,28 @@ const initiatePayment = ({
   }
 };
 
-export function initiateManualPayment({
-  items,
-  orderId,
-  description,
-}: InitiateManualPaymentRequest): void {
-  initiatePayment({ items, orderId, description });
+export function initiateManualPayment({ amount, items, orderId, description }: InitiateManualPaymentRequest): void {
+  initiatePayment({ amount, items, orderId, description });
 }
 
 export function initiateRemotePayment({
+  amount,
   orderId,
   items,
   description,
   sessionId,
 }: InitiateRemotePaymentRequest): void {
-  initiatePayment({ items, orderId, description, sessionId });
+  initiatePayment({ amount, items, orderId, description, sessionId });
 }
 
 export async function setValueAsync(value: string) {
   return await RnPosAndroidIntegrationModule.setValueAsync(value);
 }
 
-const emitter = new EventEmitter(RnPosAndroidIntegrationModule);
+// const emitter = new EventEmitter(RnPosAndroidIntegrationModule);
 
-export function addTransactionListener(
-  listener: (event: ChangeEventPayload) => void
-): Subscription {
-  return emitter.addListener<ChangeEventPayload>(
-    "onTransactionChanged",
-    listener
-  );
+export function addTransactionListener(listener: (event: ChangeEventPayload) => void): EventSubscription {
+  return RnPosAndroidIntegrationModule.addListener('onTransactionChanged', listener);
 }
 
-export {
-  RnPosAndroidIntegrationView,
-  RnPosAndroidIntegrationViewProps,
-  ChangeEventPayload,
-};
+export { RnPosAndroidIntegrationView, RnPosAndroidIntegrationViewProps, ChangeEventPayload };

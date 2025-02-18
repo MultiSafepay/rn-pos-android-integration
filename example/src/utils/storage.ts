@@ -1,7 +1,7 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Keys = {
-  apiKey: "api-key",
+  apiKey: 'api-key',
 };
 
 const storeApiKey = async (value: string) => {

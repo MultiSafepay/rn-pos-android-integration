@@ -1,11 +1,5 @@
-import {
-  createContext,
-  useState,
-  FC,
-  PropsWithChildren,
-  useContext,
-} from "react";
-import { Product } from "src/types";
+import { createContext, useState, FC, PropsWithChildren, useContext } from 'react';
+import { Product } from 'src/types';
 
 // Define the type for the cart context
 interface CartContextType {
@@ -28,11 +22,7 @@ const CartProvider: FC<PropsWithChildren> = ({ children }) => {
     setProducts((prevProducts) => [...prevProducts, product]);
   };
 
-  return (
-    <CartContext.Provider value={{ products, addToCart }}>
-      {children}
-    </CartContext.Provider>
-  );
+  return <CartContext.Provider value={{ products, addToCart }}>{children}</CartContext.Provider>;
 };
 
 export default CartProvider;
