@@ -26,8 +26,7 @@ const Pressable: FC<ITextInputProps> = ({
       return activeStyle;
     }
     if (activeBackground) {
-      // add transparency to match android's android_ripple color
-      return Platform.OS === 'ios' ? { backgroundColor: `${activeBackground}99` } : {};
+      return { backgroundColor: `${activeBackground}99` };
     }
     return { opacity: opacity ?? 0.4 };
   }, [activeStyle, opacity, activeBackground]);
@@ -36,7 +35,6 @@ const Pressable: FC<ITextInputProps> = ({
     <PresableNative
       disabled={disabled}
       hitSlop={hitSlop}
-      android_ripple={activeBackground ? { color: activeBackground } : undefined}
       style={({ pressed }) => [{ opacity: disabled ? 0.3 : 1 }, style, pressed && activeStyleMemo]}
       {...props}
     >
