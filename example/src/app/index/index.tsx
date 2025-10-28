@@ -107,7 +107,6 @@ const Shop = () => {
       <FlashList
         numColumns={2}
         data={products}
-        estimatedItemSize={72}
         renderItem={({ item: product }) => {
           return (
             <ProductCell
