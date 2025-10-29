@@ -22,10 +22,12 @@ const ProductCell: FC<Props> = ({ product, onPress }) => {
         backgroundColor: Colors.white,
       }}
     >
-      <Image source={{ uri: product.image }} style={{ width: 120, height: 120 }} />
-      <View style={{ marginVertical: 5 }}>
-        <Text style={{ fontSize: 16 }}>{product.name}</Text>
-        <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{currencyFormatter.format(product.price)}</Text>
+      <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <Image source={{ uri: product.image }} style={{ width: 140, height: 140 }} />
+        <View style={{ marginVertical: 5, width: '100%' }}>
+          <Text style={{ fontSize: 16 }}>{product.name}</Text>
+          <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{currencyFormatter.format(product.price)}</Text>
+        </View>
       </View>
       <Pressable style={{ backgroundColor: Colors.primary }} activeBackground={Colors.primaryLight} onPress={onPress}>
         <View
