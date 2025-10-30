@@ -25,18 +25,18 @@ npm install rn-pos-android-integration
 
 Run `npx pod-install` after installing the npm package.
 
-
 ### Configure for Android
+
 Do not forget to add to the Manifest the following block:
+
 ```
 <queries>
     <package android:name="com.multisafepay.pos.nokernels" />
     <package android:name="com.multisafepay.pos.sunmi" />
-    <package android:name="com.multisafepay.pos.middleware.sunmi" />
+    <package android:name="com.phonepos.mspsoftposapp" />
 </queries>
 ```
 
-
 # Contributing
 
-Contributions are very welcome! Please refer to guidelines described in the [contributing guide]( https://github.com/expo/expo#contributing).
+Contributions are very welcome! Please refer to guidelines described in the [contributing guide](https://github.com/expo/expo#contributing).

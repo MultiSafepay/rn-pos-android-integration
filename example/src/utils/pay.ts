@@ -13,7 +13,25 @@ interface StartOrderRequest {
 }
 export const startOrder = async ({ apiKey, amount, orderId, description }: StartOrderRequest) => {
   // Call the payment API
-  const url = `https://api.multisafepay.com/v1/json/orders?api_key=${apiKey}`;
+
+  const environment = await Storage.getEnvironment();
+  if (__DEV__) {
+    console.log('Using environment:', environment);
+  }
+
+  const domain = ((): string => {
+    switch (environment) {
+      case 'dev':
+        return 'https://api.dev.multisafepay.com';
+      case 'test':
+        return 'https://testapi.multisafepay.com';
+      case 'live':
+      default:
+        return 'https://api.multisafepay.com';
+    }
+  })();
+
+  const url = `${domain}/v1/json/orders?api_key=${apiKey}`;
   const body = JSON.stringify({
     type: 'redirect',
     order_id: orderId,
@@ -56,6 +74,9 @@ export const payOrder = async (products: Product[]) => {
   if (!apiKey) {
     throw new Error('No API key found');
   }
+
+  const posMode = (await Storage.getPosMode()) ?? 'sunmi-pos';
+  RnPosAndroidIntegration.setPosMode(posMode);
 
   const amount = products.reduce((acc, product) => acc + product.price * 100, 0);
   const data = await startOrder({ apiKey, amount, orderId, description });
