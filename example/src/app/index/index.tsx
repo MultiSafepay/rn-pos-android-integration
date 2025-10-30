@@ -89,17 +89,19 @@ const Shop = () => {
             fontWeight: 'bold',
           },
           headerRight: () => (
-            <Link href="/settings">
-              <Text
-                style={{
-                  color: Colors.white,
-                  fontWeight: 'bold',
-                  fontSize: 15,
-                  padding: 5,
-                }}
-              >
-                Settings
-              </Text>
+            <Link href="/settings" asChild>
+              <Pressable style={{ paddingHorizontal: 10 }}>
+                <Text
+                  style={{
+                    color: Colors.white,
+                    fontWeight: 'bold',
+                    fontSize: 15,
+                    padding: 5,
+                  }}
+                >
+                  Settings
+                </Text>
+              </Pressable>
             </Link>
           ),
         }}
