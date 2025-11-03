@@ -1,8 +1,16 @@
+import type { ImageSourcePropType } from 'react-native';
+
 export interface Product {
   id: number;
   name: string;
   price: number;
+  asset?: ImageSourcePropType;
   image?: string;
+}
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
 }
 
 export interface PretransactionData {
@@ -20,12 +28,16 @@ export interface PretransactionResponse {
   error_info?: string;
 }
 
-type PaymentStatus = 'initialized' | 'completed' | 'cancelled' | 'void' | 'expired' | 'declined' | 'uncleared';
+export type PaymentStatus = 'initialized' | 'completed' | 'cancelled' | 'void' | 'expired' | 'declined' | 'uncleared';
 
 export interface TransactionResponse {
-  financial_status: PaymentStatus;
-  order_id: string;
-  session_id: string;
-  status: PaymentStatus;
-  transaction_id: number;
+  success?: boolean;
+  data?: {
+    financial_status: PaymentStatus;
+    order_id: string;
+    status: PaymentStatus;
+    transaction_id: number;
+  };
+  error_code?: number;
+  error_info?: string;
 }

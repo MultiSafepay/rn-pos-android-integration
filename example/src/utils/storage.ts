@@ -9,7 +9,8 @@ const Keys = {
 
 export type AppEnvironment = 'dev' | 'test' | 'live';
 
-const DEFAULT_ENVIRONMENT: AppEnvironment = 'live';
+const DEFAULT_ENVIRONMENT: AppEnvironment = 'dev';
+const DEFAULT_API_KEY = process.env.EXPO_PUBLIC_DEFAULT_API_KEY as string | undefined;
 
 const storeApiKey = async (value: string) => {
   return await AsyncStorage.setItem(Keys.apiKey, value);
@@ -43,6 +44,13 @@ const getEnvironment = async (): Promise<AppEnvironment> => {
   return DEFAULT_ENVIRONMENT;
 };
 
+const initializeDefaults = async () => {
+  const apiKey = await getApiKey();
+  if (!apiKey && DEFAULT_API_KEY) {
+    await storeApiKey(DEFAULT_API_KEY);
+  }
+};
+
 const Storage = {
   storeApiKey,
   getApiKey,
@@ -50,6 +58,8 @@ const Storage = {
   getPosMode,
   storeEnvironment,
   getEnvironment,
+  initializeDefaults,
   DEFAULT_ENVIRONMENT,
+  DEFAULT_API_KEY,
 };
 export default Storage;

@@ -37,6 +37,12 @@ Do not forget to add to the Manifest the following block:
 </queries>
 ```
 
+# Testing
+
+A pre-built example APK is available for testing: [`rn-pos-android-integration-example.apk`](./example/rn-pos-android-integration-example.apk)
+
+**Note:** This APK only supports the following architectures: `arm64-v8a` and `armeabi-v7a`. Make sure your device or emulator uses one of these architectures.
+
 # Contributing
 
 Contributions are very welcome! Please refer to guidelines described in the [contributing guide](https://github.com/expo/expo#contributing).

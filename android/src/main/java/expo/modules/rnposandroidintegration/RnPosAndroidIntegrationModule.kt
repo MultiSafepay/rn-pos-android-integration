@@ -1,31 +1,33 @@
 package expo.modules.rnposandroidintegration
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.Locale
 
 const val TRANSACTION_CHANGED_EVENT_NAME = "onTransactionChanged"
+internal const val SOFT_POS_REQUEST_CODE = 6017
 
 class RnPosAndroidIntegrationModule : Module() {
-  // Each module class must implement the definition function. The definition consists of components
-  // that describes the module's functionality and behavior.
-  // See https://docs.expo.dev/modules/module-api for more details about available components.
-
   private val context get() = requireNotNull(appContext.reactContext)
+  private val currentActivity get() = appContext.activityProvider?.currentActivity
   private val appPackageName get() = context.packageName
-  private val packageManager get() = context.packageManager
 
   private var posMode: PosMode = PosMode.SUNMI
+  private val lifecycleListener = RnPosAndroidReactActivityLifecycleListener()
 
+  @SuppressLint("NewApi")
   private fun buildLaunchIntent(mode: PosMode): Intent? {
-    return context.packageManager?.getLaunchIntentForPackage(mode.packageName)
+    return when (mode) {
+      PosMode.SUNMI -> context.packageManager?.getLaunchIntentForPackage(mode.packageName)
+      PosMode.SOFT_POS -> Intent("com.phonepos.mspsoftposapp.ACTION_MANUAL_PAYMENT")
+    }
   }
 
-  private fun resolveLaunchIntent(): Intent? {
-    return buildLaunchIntent(posMode)
-  }
+  private fun resolveLaunchIntent(): Intent? = buildLaunchIntent(posMode)
 
   private var observer: (status: TransactionStatus) -> Unit = {}
 
@@ -34,17 +36,12 @@ class RnPosAndroidIntegrationModule : Module() {
     SOFT_POS("soft-pos", "com.phonepos.mspsoftposapp");
 
     companion object {
-      fun from(mode: String): PosMode? = values().firstOrNull { it.mode == mode }
+      fun from(mode: String): PosMode? = entries.firstOrNull { it.mode == mode }
     }
   }
 
   override fun definition() = ModuleDefinition {
-    // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
-    // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
-    // The module will be accessible from `requireNativeModule('RnPosAndroidIntegration')` in JavaScript.
     Name("RnPosAndroidIntegration")
-
-    // Defines event names that the module can send to JavaScript.
     Events(TRANSACTION_CHANGED_EVENT_NAME)
 
     OnCreate {
@@ -56,73 +53,79 @@ class RnPosAndroidIntegrationModule : Module() {
       Notifier.registerObserver(observer)
     }
 
-    OnDestroy {
-      Notifier.deregisterObserver(observer)
+    OnDestroy { Notifier.deregisterObserver(observer) }
+
+    // Handle activity results coming back to the host Activity.
+    OnActivityResult { activity, payload ->
+      // payload contains requestCode, resultCode, data
+      if (payload.requestCode == SOFT_POS_REQUEST_CODE && posMode == PosMode.SOFT_POS) {
+        lifecycleListener.handleActivityResult(activity, payload.requestCode, payload.resultCode, payload.data)
+      }
+    }
+
+    // Also handle new intents (SoftPOS may callback this way)
+    OnNewIntent { intent ->
+      if (posMode == PosMode.SOFT_POS) {
+        lifecycleListener.onNewIntent(intent)
+      }
     }
 
     AsyncFunction("canInitiatePayment") { promise: Promise ->
       promise.resolve(resolveLaunchIntent() != null)
     }
 
-    // Defines a synchronous function that runs the native code on the different thread than the JavaScript runtime runs on.
     Function("initiatePayment") { currency: String, amount: Long, serializedItems: String, orderId: String, description: String, sessionId: String? ->
       val intent = resolveLaunchIntent()
-      val packageName = posMode.packageName
 
       Log.d("pos-app-integration", "POS mode: ${posMode.mode}")
-      Log.d("pos-app-integration", "packageName: $appPackageName")
-      Log.d("pos-app-integration", "initiateManualPayment: amount=${amount} currency=$currency, serializedItems=$serializedItems, orderId=$orderId, description=$description, sessionId=$sessionId")
+      Log.d("pos-app-integration", "initiateManualPayment: amount=$amount currency=$currency serializedItems=$serializedItems orderId=$orderId description=$description sessionId=$sessionId")
 
-      if (intent != null) {
-        if (posMode === PosMode.SUNMI) {
-          // Sunmi POS Mode
-          intent.setClassName(packageName, "com.multisafepay.pos.middleware.IntentActivity")
-        } else {
-          // SoftPOS Mode
-          intent.setClassName(packageName, "com.phonepos.mspsoftposapp.ManualPayInputActivity")
-        }
+      if (intent == null) {
+        Log.d("pos-app-integration", "❌ Launch intent null for mode ${posMode.mode}")
+        return@Function
+      }
 
-        intent.putExtra("package_name", appPackageName) // Callback package name
-        intent.putExtra("currency", currency)
-        intent.putExtra("items", serializedItems)
+      intent.putExtra("package_name", appPackageName)
+      intent.putExtra("order_id", orderId)
+      intent.putExtra("order_description", description)
+      intent.putExtra("items", serializedItems)
+      intent.putExtra("currency", currency)
+
+      if (sessionId != null){
+        intent.putExtra("session_id", sessionId)
+      }
+
+      if (posMode == PosMode.SUNMI) {
+        intent.setClassName("com.multisafepay.pos.sunmi", "com.multisafepay.pos.middleware.IntentActivity")
         intent.putExtra("amount", amount)
-        intent.putExtra("order_id", orderId)
-        intent.putExtra("order_description", description)
-        if (sessionId != null) {
-          intent.putExtra("session_id", sessionId)
-        }
-
         context.startActivity(intent)
       } else {
-        Log.d("pos-app-integration", "❌ Intent with package $packageName not found")
+        val activity = currentActivity
+        val activityClass = activity?.componentName?.className
+        if (activity == null || activityClass == null) {
+          Log.w("pos-app-integration", "SoftPOS requires a foreground activity; aborting launch")
+          return@Function
+        }
+        intent.setClassName("com.phonepos.mspsoftposapp", "com.phonepos.mspsoftposapp.ManualPayInputActivity")
+        intent.putExtra("amount", String.format(Locale.US, "%.2f", amount / 100.0))
+        intent.putExtra("skip_manual_input", true)
+        intent.putExtra("callback_activity", activityClass)
+        intent.putExtra("callback_package", appPackageName)
+
+        activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
       }
     }
 
     Function("setPosMode") { mode: String ->
-      val newMode = PosMode.from(mode)
-      if (newMode != null) {
-        posMode = newMode
-      } else {
-        Log.w("pos-app-integration", "Unknown POS mode: $mode")
-      }
+      PosMode.from(mode)?.let { posMode = it } ?: Log.w("pos-app-integration", "Unknown POS mode: $mode")
     }
 
-    // Defines a JavaScript function that always returns a Promise and whose native code
-    // is by default dispatched on the different thread than the JavaScript runtime runs on.
     AsyncFunction("setValueAsync") { value: String ->
-      // Send an event to JavaScript.
-      sendEvent("onChange", mapOf(
-        "value" to value
-      ))
+      sendEvent("onChange", mapOf("value" to value))
     }
 
-    // Enables the module to be used as a native view. Definition components that are accepted as part of
-    // the view definition: Prop, Events.
     View(RnPosAndroidIntegrationView::class) {
-      // Defines a setter for the `name` prop.
-      Prop("name") { view: RnPosAndroidIntegrationView, prop: String ->
-        println(prop)
-      }
+      Prop("name") { view: RnPosAndroidIntegrationView, prop: String -> println(prop) }
     }
   }
 }

@@ -59,3 +59,6 @@ yarn-error.log
 # Builds
 *.apk
 *.aab
+
+# Un-ignore the example APK
+!rn-pos-android-integration-example.apk
