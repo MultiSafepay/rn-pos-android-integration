@@ -7,14 +7,18 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:local:release": "eas build --platform android --profile production --local"
+    "build:local:release": "eas build --platform android --profile production --local",
+    "build:local:debug": "eas build --platform android --profile development --local"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/flash-list": "2.0.2",
     "expo": "^54.0.20",
+    "expo-application": "~7.0.7",
     "expo-build-properties": "~1.0.9",
     "expo-constants": "~18.0.10",
+    "expo-dev-client": "~6.0.16",
     "expo-image": "~3.0.10",
     "expo-linking": "~8.0.8",
     "expo-router": "~6.0.13",

@@ -1,9 +1,21 @@
 import * as RnPosAndroidIntegration from 'rn-pos-android-integration';
-import { PretransactionData, PretransactionResponse, Product } from 'src/types';
+import { CartItem, PretransactionData, PretransactionResponse, TransactionResponse } from 'src/types';
 import { v4 as uuidv4 } from 'uuid';
 import 'react-native-get-random-values';
 
-import Storage from './storage';
+import Storage, { AppEnvironment } from './storage';
+
+const getApiDomain = (environment: AppEnvironment) => {
+  switch (environment) {
+    case 'dev':
+      return 'https://api.dev.multisafepay.com';
+    case 'test':
+      return 'https://testapi.multisafepay.com';
+    case 'live':
+    default:
+      return 'https://api.multisafepay.com';
+  }
+};
 
 interface StartOrderRequest {
   apiKey: string;
@@ -19,19 +31,9 @@ export const startOrder = async ({ apiKey, amount, orderId, description }: Start
     console.log('Using environment:', environment);
   }
 
-  const domain = ((): string => {
-    switch (environment) {
-      case 'dev':
-        return 'https://api.dev.multisafepay.com';
-      case 'test':
-        return 'https://testapi.multisafepay.com';
-      case 'live':
-      default:
-        return 'https://api.multisafepay.com';
-    }
-  })();
-
+  const domain = getApiDomain(environment);
   const url = `${domain}/v1/json/orders?api_key=${apiKey}`;
+
   const body = JSON.stringify({
     type: 'redirect',
     order_id: orderId,
@@ -66,7 +68,11 @@ export const startOrder = async ({ apiKey, amount, orderId, description }: Start
   }
 };
 
-export const payOrder = async (products: Product[]) => {
+interface PayOrderRequest {
+  cartItems: CartItem[];
+}
+
+export const payOrder = async ({ cartItems }: PayOrderRequest) => {
   const orderId = uuidv4();
   const description = 'React Native POS ' + orderId;
 
@@ -78,7 +84,7 @@ export const payOrder = async (products: Product[]) => {
   const posMode = (await Storage.getPosMode()) ?? 'sunmi-pos';
   RnPosAndroidIntegration.setPosMode(posMode);
 
-  const amount = products.reduce((acc, product) => acc + product.price * 100, 0);
+  const amount = cartItems.reduce((acc, item) => acc + item.product.price * 100 * item.quantity, 0);
   const data = await startOrder({ apiKey, amount, orderId, description });
 
   const canInitiatePayment = await RnPosAndroidIntegration.canInitiatePayment();
@@ -86,10 +92,10 @@ export const payOrder = async (products: Product[]) => {
     throw new Error("Can't initiate payment: device not supported");
   }
 
-  const items: RnPosAndroidIntegration.OrderItem[] = products.map((product) => ({
-    name: product.name,
-    unit_price: product.price.toString(),
-    quantity: '1',
+  const items: RnPosAndroidIntegration.OrderItem[] = cartItems.map((cartItem) => ({
+    name: cartItem.product.name,
+    unit_price: cartItem.product.price.toString(),
+    quantity: cartItem.quantity.toString(),
   }));
 
   RnPosAndroidIntegration.initiateRemotePayment({
@@ -101,4 +107,29 @@ export const payOrder = async (products: Product[]) => {
   });
 
   return Promise.resolve();
+};
+
+export const getTransactionDetails = async (transactionId: string) => {
+  const apiKey = await Storage.getApiKey();
+  if (!apiKey) {
+    throw new Error('No API key found');
+  }
+
+  const environment = await Storage.getEnvironment();
+  const domain = getApiDomain(environment);
+  const url = `${domain}/v1/json/orders/${transactionId}?api_key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+  });
+  const data = (await response.json()) as TransactionResponse;
+  if (__DEV__) {
+    console.log('Get transaction response: ', data);
+  }
+
+  if (response.status === 200 && data.success === true) {
+    return data.data;
+  } else {
+    throw new Error(data.error_info ?? 'An error occurred while fetching the transaction details');
+  }
 };
