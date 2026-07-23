@@ -1,6 +1,8 @@
 package expo.modules.rnposandroidintegration
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.util.Log
 import expo.modules.kotlin.Promise
@@ -112,7 +114,12 @@ class RnPosAndroidIntegrationModule : Module() {
         intent.putExtra("callback_activity", activityClass)
         intent.putExtra("callback_package", appPackageName)
 
-        activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
+        // DEBUG: show the outbound intent to the external team before launching.
+        // The Pay App is only started when the user taps "Open Pay App", so the
+        // alert is actually readable (otherwise the Pay App would cover it).
+        showOutboundIntentAlert(activity, intent) {
+          activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
+        }
       }
     }
 
@@ -126,6 +133,49 @@ class RnPosAndroidIntegrationModule : Module() {
 
     View(RnPosAndroidIntegrationView::class) {
       Prop("name") { view: RnPosAndroidIntegrationView, prop: String -> println(prop) }
+    }
+  }
+
+  // DEBUG: dumps the outbound intent (action, target component and every extra
+  // with its runtime type) into an AlertDialog before the Pay App is launched.
+  // Works in release builds. `onProceed` runs only when the user confirms, so
+  // the launch happens after the payload has been inspected. Remove once the
+  // external team has verified what they receive.
+  private fun showOutboundIntentAlert(activity: Activity, intent: Intent, onProceed: () -> Unit) {
+    val payload = StringBuilder()
+    payload.append("action = ${intent.action}\n")
+    payload.append("component = ${intent.component?.className}\n")
+    payload.append("--- extras ---\n")
+
+    val extras = intent.extras
+    if (extras != null && !extras.isEmpty) {
+      for (key in extras.keySet()) {
+        @Suppress("DEPRECATION")
+        val value = extras.get(key)
+        payload.append("$key = $value  (${value?.javaClass?.simpleName ?: "null"})\n")
+      }
+    } else {
+      payload.append("(no extras)\n")
+    }
+
+    val message = payload.toString()
+    Log.d("pos-app-integration", "Outbound SoftPOS intent:\n$message")
+
+    if (activity.isFinishing) {
+      // No usable UI context — just launch so we never block a real payment.
+      Log.w("pos-app-integration", "Activity finishing; launching without outbound alert")
+      onProceed()
+      return
+    }
+
+    activity.runOnUiThread {
+      AlertDialog.Builder(activity)
+        .setTitle("SoftPOS Outbound Intent (debug)")
+        .setMessage(message)
+        .setPositiveButton("Open Pay App") { _, _ -> onProceed() }
+        .setNegativeButton("Cancel", null)
+        .setCancelable(false)
+        .show()
     }
   }
 }

@@ -23,7 +23,10 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     // on waking up from callback process results
     // this intent is only called if target App (Pay App) is properly finalized.
     if (intent != null) {
-      this.processMSPMiddlewareResponse(intent)
+      this.processMSPMiddlewareResponse(intent, "onNewIntent")
+    } else {
+      // DEBUG: even a null intent is worth seeing during this investigation.
+      this.showIntentPayloadAlert(null, "onNewIntent (intent == null)")
     }
     return super.onNewIntent(intent)
   }
@@ -37,17 +40,21 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     }
 
     if (data != null) {
-      this.processMSPMiddlewareResponse(data)
+      this.processMSPMiddlewareResponse(data, "handleActivityResult resultCode=$resultCode")
     } else {
+      // DEBUG: surface the null-data case too — a null result Intent is itself a
+      // strong signal (e.g. the Pay App called setResult without data, or
+      // RESULT_CANCELED). Previously this only hit Logcat.
       Log.w("pos-app-integration", "SoftPOS result missing intent data; resultCode=$resultCode")
+      this.showIntentPayloadAlert(null, "handleActivityResult resultCode=$resultCode (data == null)")
     }
   }
 
-  private fun processMSPMiddlewareResponse(intent: Intent) {
+  private fun processMSPMiddlewareResponse(intent: Intent, source: String = "unknown") {
     // DEBUG: surface the raw intent payload as an on-screen alert before running
     // the normal handling below. Works in release builds (no debugger needed).
     // Remove this call once the external team's payload has been verified.
-    this.showIntentPayloadAlert(intent)
+    this.showIntentPayloadAlert(intent, source)
 
     //retrieve intent extra data including message.
     if (intent.hasExtra("status")) {
@@ -81,7 +88,7 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   // DEBUG: dumps every extra (plus action / data) from the incoming intent into
   // a readable AlertDialog so the payload can be inspected on-device. This does
   // not alter the normal flow — the existing handling still runs afterwards.
-  private fun showIntentPayloadAlert(intent: Intent) {
+  private fun showIntentPayloadAlert(intent: Intent?, source: String) {
     val activity = this.currentActivity
     if (activity == null || activity.isFinishing) {
       Log.w("pos-app-integration", "No activity available to show intent payload alert")
@@ -89,34 +96,43 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     }
 
     val payload = StringBuilder()
-    payload.append("action = ${intent.action}\n")
-    payload.append("dataString = ${intent.dataString}\n")
+    // Which entry point delivered this? Tells us whether the Pay App returned
+    // via onActivityResult (setResult) or by relaunching the callback activity.
+    payload.append("source = $source\n")
 
-    // Explicitly surface the fields the handler cares about, with their raw
-    // runtime type. `extras.get(key)` returns the value as its real type, so a
-    // String "status" vs an Int "status" is immediately visible here.
-    val extras = intent.extras
-    payload.append("--- key fields ---\n")
-    payload.append("hasExtra(status)        = ${intent.hasExtra("status")}\n")
-    @Suppress("DEPRECATION")
-    val rawStatus = extras?.get("status")
-    payload.append("status                  = $rawStatus  (${rawStatus?.javaClass?.simpleName ?: "null"})\n")
-    payload.append("hasExtra(result_status) = ${intent.hasExtra("result_status")}\n")
-    @Suppress("DEPRECATION")
-    val rawResultStatus = extras?.get("result_status")
-    payload.append("result_status           = $rawResultStatus  (${rawResultStatus?.javaClass?.simpleName ?: "null"})\n")
-    payload.append("message                 = ${intent.getStringExtra("message")}\n")
-    payload.append("description             = ${intent.getStringExtra("description")}\n")
-
-    payload.append("--- all extras ---\n")
-    if (extras != null && !extras.isEmpty) {
-      for (key in extras.keySet()) {
-        @Suppress("DEPRECATION")
-        val value = extras.get(key)
-        payload.append("$key = $value  (${value?.javaClass?.simpleName ?: "null"})\n")
-      }
+    if (intent == null) {
+      payload.append("intent = null\n")
     } else {
-      payload.append("(no extras)\n")
+      payload.append("action = ${intent.action}\n")
+      payload.append("dataString = ${intent.dataString}\n")
+      payload.append("component = ${intent.component?.className}\n")
+
+      // Explicitly surface the fields the handler cares about, with their raw
+      // runtime type. `extras.get(key)` returns the value as its real type, so a
+      // String "status" vs an Int "status" is immediately visible here.
+      val extras = intent.extras
+      payload.append("--- key fields ---\n")
+      payload.append("hasExtra(status)        = ${intent.hasExtra("status")}\n")
+      @Suppress("DEPRECATION")
+      val rawStatus = extras?.get("status")
+      payload.append("status                  = $rawStatus  (${rawStatus?.javaClass?.simpleName ?: "null"})\n")
+      payload.append("hasExtra(result_status) = ${intent.hasExtra("result_status")}\n")
+      @Suppress("DEPRECATION")
+      val rawResultStatus = extras?.get("result_status")
+      payload.append("result_status           = $rawResultStatus  (${rawResultStatus?.javaClass?.simpleName ?: "null"})\n")
+      payload.append("message                 = ${intent.getStringExtra("message")}\n")
+      payload.append("description             = ${intent.getStringExtra("description")}\n")
+
+      payload.append("--- all extras ---\n")
+      if (extras != null && !extras.isEmpty) {
+        for (key in extras.keySet()) {
+          @Suppress("DEPRECATION")
+          val value = extras.get(key)
+          payload.append("$key = $value  (${value?.javaClass?.simpleName ?: "null"})\n")
+        }
+      } else {
+        payload.append("(no extras)\n")
+      }
     }
 
     val message = payload.toString()
