@@ -23,7 +23,11 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     // on waking up from callback process results
     // this intent is only called if target App (Pay App) is properly finalized.
     if (intent != null) {
-      this.processMSPMiddlewareResponse(intent, "onNewIntent")
+      if (this.hasCallbackPayload(intent)) {
+        this.processMSPMiddlewareResponse(intent, "onNewIntent")
+      } else {
+        Log.w("pos-app-integration", "SoftPOS onNewIntent callback did not include extras or data; ignoring empty debug alert")
+      }
     } else {
       // DEBUG: even a null intent is worth seeing during this investigation.
       this.showIntentPayloadAlert(null, "onNewIntent (intent == null)")
@@ -35,26 +39,30 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   fun handleActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
     Log.w("pos-app-integration", "SoftPOS result intent data; requestCode=$requestCode, resultCode=$resultCode activity=${activity?.javaClass?.simpleName}")
 
+    if (activity != null) {
+      this.currentActivity = activity
+    }
+
     if (requestCode != SOFT_POS_REQUEST_CODE) {
       return
     }
 
     if (data != null) {
-      this.processMSPMiddlewareResponse(data, "handleActivityResult resultCode=$resultCode")
+      this.processMSPMiddlewareResponse(data, "handleActivityResult resultCode=$resultCode", activity)
     } else {
       // DEBUG: surface the null-data case too — a null result Intent is itself a
       // strong signal (e.g. the Pay App called setResult without data, or
       // RESULT_CANCELED). Previously this only hit Logcat.
       Log.w("pos-app-integration", "SoftPOS result missing intent data; resultCode=$resultCode")
-      this.showIntentPayloadAlert(null, "handleActivityResult resultCode=$resultCode (data == null)")
+      this.showIntentPayloadAlert(null, "handleActivityResult resultCode=$resultCode (data == null)", activity)
     }
   }
 
-  private fun processMSPMiddlewareResponse(intent: Intent, source: String = "unknown") {
+  private fun processMSPMiddlewareResponse(intent: Intent, source: String = "unknown", activity: Activity? = null) {
     // DEBUG: surface the raw intent payload as an on-screen alert before running
     // the normal handling below. Works in release builds (no debugger needed).
     // Remove this call once the external team's payload has been verified.
-    this.showIntentPayloadAlert(intent, source)
+    this.showIntentPayloadAlert(intent, source, activity)
 
     //retrieve intent extra data including message.
     if (intent.hasExtra("status")) {
@@ -85,11 +93,17 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   }
   
 
+  private fun hasCallbackPayload(intent: Intent): Boolean {
+    val extras = intent.extras
+    return (extras != null && !extras.isEmpty) || intent.dataString != null
+  }
+
+
   // DEBUG: dumps every extra (plus action / data) from the incoming intent into
   // a readable AlertDialog so the payload can be inspected on-device. This does
   // not alter the normal flow — the existing handling still runs afterwards.
-  private fun showIntentPayloadAlert(intent: Intent?, source: String) {
-    val activity = this.currentActivity
+  private fun showIntentPayloadAlert(intent: Intent?, source: String, preferredActivity: Activity? = null) {
+    val activity = preferredActivity ?: this.currentActivity
     if (activity == null || activity.isFinishing) {
       Log.w("pos-app-integration", "No activity available to show intent payload alert")
       return
