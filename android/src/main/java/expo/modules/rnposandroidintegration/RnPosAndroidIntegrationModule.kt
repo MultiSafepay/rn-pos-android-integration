@@ -128,4 +128,5 @@ class RnPosAndroidIntegrationModule : Module() {
       Prop("name") { view: RnPosAndroidIntegrationView, prop: String -> println(prop) }
     }
   }
+
 }

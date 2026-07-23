@@ -56,6 +56,8 @@ const Checkout = () => {
             return 'completed';
           case 'DECLINED':
             return 'declined';
+          case 'UNDEFINED':
+            return 'uncleared';
           case 'EXCEPTION':
           default:
             return 'cancelled';
