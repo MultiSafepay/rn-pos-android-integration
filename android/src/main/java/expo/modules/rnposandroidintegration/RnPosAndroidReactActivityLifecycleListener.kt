@@ -3,11 +3,46 @@ package expo.modules.rnposandroidintegration
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.os.Bundle
 import android.util.Log
 import expo.modules.core.interfaces.ReactActivityLifecycleListener
 import java.util.*
 
 class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListener {
+
+  companion object {
+    private const val MAX_DEBUG_COLLECTION_ITEMS = 20
+    private const val MAX_DEBUG_MESSAGE_LENGTH = 12000
+    private const val MAX_DEBUG_VALUE_LENGTH = 800
+    private const val DEBUG_ALERT_DELAY_MS = 250L
+
+    private val DEBUG_EXTRA_KEYS = linkedSetOf(
+      "status",
+      "status_code",
+      "statusCode",
+      "result_status",
+      "resultStatus",
+      "payment_status",
+      "paymentStatus",
+      "transaction_status",
+      "transactionStatus",
+      "result_code",
+      "resultCode",
+      "response_code",
+      "responseCode",
+      "code",
+      "message",
+      "description",
+      "order_id",
+      "orderId",
+      "transaction_id",
+      "transactionId",
+      "payment_id",
+      "paymentId",
+      "session_id",
+      "sessionId"
+    )
+  }
 
   // https://docs.expo.dev/modules/android-lifecycle-listeners/#activity-lifecycle-listeners
 
@@ -65,18 +100,18 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     this.showIntentPayloadAlert(intent, source, activity)
 
     //retrieve intent extra data including message.
-    if (intent.hasExtra("status")) {
-      val status = intent.getIntExtra("status", 0)
-      val message = intent.getStringExtra("message")
+    if (safeHasExtra(intent, "status")) {
+      val status = safeIntExtra(intent, "status") ?: 0
+      val message = safeStringExtra(intent, "message")
       Log.d("pos-app-integration", "Received SoftPOS callback via status=$status message=$message")
       this.handleMiddlewareCallback(status, message)
       return
     }
 
-    if (intent.hasExtra("result_status")) {
-      val resultStatus = intent.getStringExtra("result_status")?.lowercase(Locale.ROOT)
-      val message = intent.getStringExtra("message")
-      val description = intent.getStringExtra("description")
+    if (safeHasExtra(intent, "result_status")) {
+      val resultStatus = safeStringExtra(intent, "result_status")?.lowercase(Locale.ROOT)
+      val message = safeStringExtra(intent, "message")
+      val description = safeStringExtra(intent, "description")
 
       Log.d("pos-app-integration", "Received SoftPOS activity result result_status=$resultStatus message=$message description=$description")
 
@@ -94,8 +129,68 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   
 
   private fun hasCallbackPayload(intent: Intent): Boolean {
-    val extras = intent.extras
-    return (extras != null && !extras.isEmpty) || intent.dataString != null
+    if (intent.dataString != null) {
+      return true
+    }
+
+    return try {
+      val extras = intent.extras
+      extras != null && !extras.isEmpty
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to inspect SoftPOS callback extras", error)
+      true
+    }
+  }
+
+  private fun readTextExtra(intent: Intent, key: String): String? {
+    val stringValue = safeStringExtra(intent, key)
+    if (stringValue != null) {
+      return stringValue
+    }
+
+    return when (val rawValue = safeRawExtra(intent, key)) {
+      is CharSequence -> rawValue.toString()
+      is Number -> rawValue.toString()
+      is Boolean -> rawValue.toString()
+      else -> null
+    }
+  }
+
+  private fun safeHasExtra(intent: Intent, key: String): Boolean {
+    return try {
+      intent.hasExtra(key)
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to check SoftPOS extra '$key'", error)
+      false
+    }
+  }
+
+  private fun safeIntExtra(intent: Intent, key: String): Int? {
+    return try {
+      intent.getIntExtra(key, Int.MIN_VALUE).takeUnless { it == Int.MIN_VALUE }
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to read SoftPOS int extra '$key'", error)
+      null
+    }
+  }
+
+  private fun safeStringExtra(intent: Intent, key: String): String? {
+    return try {
+      intent.getStringExtra(key)
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to read SoftPOS string extra '$key'", error)
+      null
+    }
+  }
+
+  private fun safeRawExtra(intent: Intent, key: String): Any? {
+    return try {
+      @Suppress("DEPRECATION")
+      intent.extras?.get(key)
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to read SoftPOS raw extra '$key'", error)
+      null
+    }
   }
 
 
@@ -117,48 +212,255 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     if (intent == null) {
       payload.append("intent = null\n")
     } else {
-      payload.append("action = ${intent.action}\n")
-      payload.append("dataString = ${intent.dataString}\n")
-      payload.append("component = ${intent.component?.className}\n")
+      appendIntentMetadata(payload, intent)
 
-      // Explicitly surface the fields the handler cares about, with their raw
-      // runtime type. `extras.get(key)` returns the value as its real type, so a
-      // String "status" vs an Int "status" is immediately visible here.
-      val extras = intent.extras
-      payload.append("--- key fields ---\n")
-      payload.append("hasExtra(status)        = ${intent.hasExtra("status")}\n")
-      @Suppress("DEPRECATION")
-      val rawStatus = extras?.get("status")
-      payload.append("status                  = $rawStatus  (${rawStatus?.javaClass?.simpleName ?: "null"})\n")
-      payload.append("hasExtra(result_status) = ${intent.hasExtra("result_status")}\n")
-      @Suppress("DEPRECATION")
-      val rawResultStatus = extras?.get("result_status")
-      payload.append("result_status           = $rawResultStatus  (${rawResultStatus?.javaClass?.simpleName ?: "null"})\n")
-      payload.append("message                 = ${intent.getStringExtra("message")}\n")
-      payload.append("description             = ${intent.getStringExtra("description")}\n")
+      payload.append("--- handler parsed values ---\n")
+      appendHandlerParsedValues(payload, intent)
+
+      payload.append("--- known possible fields ---\n")
+      appendKnownExtras(payload, intent)
 
       payload.append("--- all extras ---\n")
+      appendAllExtras(payload, intent)
+    }
+
+    val fullMessage = payload.toString()
+    logLongDebugMessage("Intent payload", fullMessage)
+    val message = truncateDebugText(fullMessage, MAX_DEBUG_MESSAGE_LENGTH)
+
+    activity.runOnUiThread {
+      activity.window.decorView.postDelayed({
+        if (activity.isFinishing || activity.isDestroyed) {
+          Log.w("pos-app-integration", "Activity no longer available to show intent payload alert")
+          return@postDelayed
+        }
+
+        try {
+          AlertDialog.Builder(activity)
+            .setTitle("SoftPOS Intent Payload (debug)")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .setCancelable(true)
+            .show()
+        } catch (error: RuntimeException) {
+          Log.e("pos-app-integration", "Unable to show SoftPOS intent payload alert", error)
+        }
+      }, DEBUG_ALERT_DELAY_MS)
+    }
+  }
+
+  private fun appendHandlerParsedValues(payload: StringBuilder, intent: Intent) {
+    val statusInt = safeIntExtra(intent, "status")
+    val statusString = safeStringExtra(intent, "status")
+    val statusRaw = safeRawExtra(intent, "status")
+    val resultStatus = safeStringExtra(intent, "result_status")
+    val message = safeStringExtra(intent, "message")
+    val description = safeStringExtra(intent, "description")
+
+    payload.append("hasExtra(status)              = ${safeHasExtra(intent, "status")}\n")
+    payload.append("status as Int                = ${formatDebugValue(statusInt)}\n")
+    payload.append("status as String             = ${formatDebugValue(statusString)}\n")
+    payload.append("status raw                   = ${formatDebugValueWithType(statusRaw)}\n")
+    payload.append("hasExtra(result_status)      = ${safeHasExtra(intent, "result_status")}\n")
+    payload.append("result_status as String      = ${formatDebugValue(resultStatus)}\n")
+    payload.append("result_status normalized     = ${formatDebugValue(resultStatus?.lowercase(Locale.ROOT))}\n")
+    payload.append("message as String            = ${formatDebugValue(message)}\n")
+    payload.append("description as String        = ${formatDebugValue(description)}\n")
+    payload.append("message text fallback        = ${formatDebugValue(readTextExtra(intent, "message"))}\n")
+    payload.append("description text fallback    = ${formatDebugValue(readTextExtra(intent, "description"))}\n")
+  }
+
+  private fun appendIntentMetadata(payload: StringBuilder, intent: Intent) {
+    payload.append("action = ${safeIntentValue("action") { intent.action }}\n")
+    payload.append("dataString = ${safeIntentValue("dataString") { intent.dataString }}\n")
+    payload.append("dataScheme = ${safeIntentValue("scheme") { intent.scheme }}\n")
+    payload.append("type = ${safeIntentValue("type") { intent.type }}\n")
+    payload.append("package = ${safeIntentValue("package") { intent.`package` }}\n")
+    payload.append("component = ${safeIntentValue("component") { intent.component?.className }}\n")
+    payload.append("flags = ${safeIntentValue("flags") { "0x${Integer.toHexString(intent.flags)}" }}\n")
+    payload.append("categories = ${safeIntentValue("categories") { intent.categories?.joinToString() }}\n")
+    payload.append("sourceBounds = ${safeIntentValue("sourceBounds") { intent.sourceBounds }}\n")
+    payload.append("selector = ${safeIntentValue("selector") { describeIntentReference(intent.selector) }}\n")
+    payload.append("clipData = ${safeIntentValue("clipData") { describeClipData(intent) }}\n")
+    payload.append("intentUri = ${safeIntentValue("intentUri") { intent.toUri(Intent.URI_INTENT_SCHEME) }}\n")
+  }
+
+  private fun appendKnownExtras(payload: StringBuilder, intent: Intent) {
+    var foundKnownExtra = false
+    for (key in DEBUG_EXTRA_KEYS) {
+      val hasExtra = safeHasExtra(intent, key)
+      if (!hasExtra) {
+        continue
+      }
+
+      foundKnownExtra = true
+      val rawValue = safeRawExtra(intent, key)
+      val textValue = readTextExtra(intent, key)
+      payload.append("$key: hasExtra=$hasExtra value=${formatDebugValueWithType(rawValue)} text=${formatDebugValue(textValue)}\n")
+    }
+
+    if (!foundKnownExtra) {
+      payload.append("(no known fields found)\n")
+    }
+  }
+
+  private fun appendAllExtras(payload: StringBuilder, intent: Intent) {
+    try {
+      val extras = intent.extras
       if (extras != null && !extras.isEmpty) {
         for (key in extras.keySet()) {
-          @Suppress("DEPRECATION")
-          val value = extras.get(key)
-          payload.append("$key = $value  (${value?.javaClass?.simpleName ?: "null"})\n")
+          val value = try {
+            @Suppress("DEPRECATION")
+            extras.get(key)
+          } catch (error: RuntimeException) {
+            Log.e("pos-app-integration", "Unable to read SoftPOS extra '$key'", error)
+            "<error reading value: ${error.javaClass.simpleName}>"
+          }
+          payload.append("$key = ${formatDebugValueWithType(value)}\n")
         }
       } else {
         payload.append("(no extras)\n")
       }
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to enumerate SoftPOS extras", error)
+      payload.append("(unable to enumerate extras: ${error.javaClass.simpleName}: ${error.message})\n")
+    }
+  }
+
+  private fun safeIntentValue(name: String, read: () -> Any?): String {
+    return try {
+      formatDebugValue(read())
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to read SoftPOS intent $name", error)
+      "<error: ${error.javaClass.simpleName}: ${error.message}>"
+    }
+  }
+
+  private fun describeIntentReference(intent: Intent?): String? {
+    if (intent == null) {
+      return null
     }
 
-    val message = payload.toString()
-    Log.d("pos-app-integration", "Intent payload:\n$message")
+    return "Intent{action=${intent.action}, data=${intent.dataString}, component=${intent.component?.className}}"
+  }
 
-    activity.runOnUiThread {
-      AlertDialog.Builder(activity)
-        .setTitle("SoftPOS Intent Payload (debug)")
-        .setMessage(message)
-        .setPositiveButton("OK", null)
-        .setCancelable(true)
-        .show()
+  private fun describeClipData(intent: Intent): String? {
+    val clipData = intent.clipData ?: return null
+    val itemCount = clipData.itemCount
+    val itemLimit = itemCount.coerceAtMost(MAX_DEBUG_COLLECTION_ITEMS)
+    val items = mutableListOf<String>()
+
+    for (index in 0 until itemLimit) {
+      val item = clipData.getItemAt(index)
+      items.add(
+        "item[$index]={text=${formatDebugValue(item.text)}, uri=${formatDebugValue(item.uri)}, html=${formatDebugValue(item.htmlText)}, intent=${formatDebugValue(describeIntentReference(item.intent))}}"
+      )
+    }
+
+    val suffix = if (itemCount > itemLimit) ", ... ${itemCount - itemLimit} more" else ""
+    return "ClipData{itemCount=$itemCount, items=${items.joinToString(prefix = "[", postfix = "]$suffix")}}"
+  }
+
+  private fun formatDebugValueWithType(value: Any?): String {
+    return "${formatDebugValue(value)} (${value?.javaClass?.simpleName ?: "null"})"
+  }
+
+  private fun formatDebugValue(value: Any?, depth: Int = 0): String {
+    val text = try {
+      when (value) {
+        null -> "null"
+        is Bundle -> formatBundleValue(value, depth)
+        is Intent -> describeIntentReference(value) ?: "null"
+        is CharSequence -> value.toString()
+        is Number -> value.toString()
+        is Boolean -> value.toString()
+        is Array<*> -> formatCollectionValue(value.asIterable(), value.size, depth)
+        is IntArray -> formatPrimitiveCollectionValue(value.toList())
+        is LongArray -> formatPrimitiveCollectionValue(value.toList())
+        is DoubleArray -> formatPrimitiveCollectionValue(value.toList())
+        is FloatArray -> formatPrimitiveCollectionValue(value.toList())
+        is BooleanArray -> formatPrimitiveCollectionValue(value.toList())
+        is ByteArray -> formatPrimitiveCollectionValue(value.toList())
+        is ShortArray -> formatPrimitiveCollectionValue(value.toList())
+        is CharArray -> formatPrimitiveCollectionValue(value.toList())
+        is Iterable<*> -> formatCollectionValue(value, (value as? Collection<*>)?.size, depth)
+        is Map<*, *> -> formatMapValue(value, depth)
+        else -> value.toString()
+      }
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to format SoftPOS debug value", error)
+      "<error formatting value: ${error.javaClass.simpleName}: ${error.message}>"
+    }
+
+    return truncateDebugText(text, MAX_DEBUG_VALUE_LENGTH)
+  }
+
+  private fun formatBundleValue(bundle: Bundle, depth: Int): String {
+    if (depth >= 2) {
+      return "Bundle(keys=${safeBundleKeys(bundle)?.joinToString() ?: "<unreadable>"})"
+    }
+
+    val keys = safeBundleKeys(bundle) ?: return "Bundle(<unable to read keys>)"
+    if (keys.isEmpty()) {
+      return "Bundle{}"
+    }
+
+    val entries = keys.take(MAX_DEBUG_COLLECTION_ITEMS).map { key ->
+      val value = try {
+        @Suppress("DEPRECATION")
+        bundle.get(key)
+      } catch (error: RuntimeException) {
+        Log.e("pos-app-integration", "Unable to read nested SoftPOS bundle extra '$key'", error)
+        "<error reading value: ${error.javaClass.simpleName}>"
+      }
+      "$key=${formatDebugValue(value, depth + 1)}"
+    }
+
+    val suffix = if (keys.size > MAX_DEBUG_COLLECTION_ITEMS) ", ... ${keys.size - MAX_DEBUG_COLLECTION_ITEMS} more" else ""
+    return entries.joinToString(prefix = "Bundle{", postfix = "$suffix}")
+  }
+
+  private fun safeBundleKeys(bundle: Bundle): List<String>? {
+    return try {
+      bundle.keySet().toList()
+    } catch (error: RuntimeException) {
+      Log.e("pos-app-integration", "Unable to read SoftPOS bundle keys", error)
+      null
+    }
+  }
+
+  private fun formatCollectionValue(values: Iterable<*>, size: Int?, depth: Int): String {
+    val items = values.take(MAX_DEBUG_COLLECTION_ITEMS).map { formatDebugValue(it, depth + 1) }
+    val suffix = if (size != null && size > MAX_DEBUG_COLLECTION_ITEMS) ", ... ${size - MAX_DEBUG_COLLECTION_ITEMS} more" else ""
+    return items.joinToString(prefix = "[", postfix = "]$suffix")
+  }
+
+  private fun formatPrimitiveCollectionValue(values: List<Any>): String {
+    val items = values.take(MAX_DEBUG_COLLECTION_ITEMS).map { it.toString() }
+    val suffix = if (values.size > MAX_DEBUG_COLLECTION_ITEMS) ", ... ${values.size - MAX_DEBUG_COLLECTION_ITEMS} more" else ""
+    return items.joinToString(prefix = "[", postfix = "]$suffix")
+  }
+
+  private fun formatMapValue(value: Map<*, *>, depth: Int): String {
+    val entries = value.entries.take(MAX_DEBUG_COLLECTION_ITEMS).map { (key, entryValue) ->
+      "${formatDebugValue(key, depth + 1)}=${formatDebugValue(entryValue, depth + 1)}"
+    }
+    val suffix = if (value.size > MAX_DEBUG_COLLECTION_ITEMS) ", ... ${value.size - MAX_DEBUG_COLLECTION_ITEMS} more" else ""
+    return entries.joinToString(prefix = "{", postfix = "}$suffix")
+  }
+
+  private fun truncateDebugText(value: String, maxLength: Int): String {
+    if (value.length <= maxLength) {
+      return value
+    }
+
+    return value.take(maxLength) + "\n... <truncated ${value.length - maxLength} chars>"
+  }
+
+  private fun logLongDebugMessage(label: String, message: String) {
+    val chunks = message.chunked(3500)
+    for ((index, chunk) in chunks.withIndex()) {
+      Log.d("pos-app-integration", "$label [${index + 1}/${chunks.size}]:\n$chunk")
     }
   }
 
