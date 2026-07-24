@@ -1,0 +1,26 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none"
+    xmlns="http://www.w3.org/2000/svg">
+    <rect width="1024" height="1024" fill="#FFFFFF" />
+    <image href="../msp-glyph-color.png" x="160" y="164" width="704" height="704"
+        preserveAspectRatio="xMidYMid meet" />
+
+    <g filter="url(#softShadow)">
+        <path
+            d="M354 498C354 466 380 440 412 440H612C644 440 670 466 670 498V752L626 724L582 752L538 724L494 752L450 724L354 752V498Z"
+            fill="#FFFFFF" stroke="#005276" stroke-width="28" stroke-linejoin="round" />
+        <path d="M426 522H598" stroke="#10ACE2" stroke-width="28" stroke-linecap="round" />
+        <path d="M426 600H594" stroke="#005276" stroke-width="24" stroke-linecap="round"
+            opacity="0.9" />
+        <path d="M426 674H520" stroke="#005276" stroke-width="24" stroke-linecap="round"
+            opacity="0.9" />
+        <path d="M544 678L586 718L658 628" stroke="#10ACE2" stroke-width="34" stroke-linecap="round"
+            stroke-linejoin="round" />
+    </g>
+
+    <defs>
+        <filter id="softShadow" x="310" y="408" width="400" height="396"
+            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+            <feDropShadow dx="0" dy="18" stdDeviation="14" flood-color="#005276" flood-opacity="0.2" />
+        </filter>
+    </defs>
+</svg>

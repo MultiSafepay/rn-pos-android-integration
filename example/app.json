@@ -3,15 +3,10 @@
     "name": "rn-pos-android-integration-example",
     "slug": "rn-pos-android-integration-example",
     "scheme": "rn-pos-android-integration-example",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "default",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "icon": "./assets/icon-receipt.png",
+    "userInterfaceStyle": "automatic",
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
@@ -19,16 +14,18 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/adaptive-icon-receipt.png",
         "backgroundColor": "#ffffff"
       },
       "package": "expo.modules.rnposandroidintegration.example"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon-receipt.png"
     },
     "plugins": [
+      "./plugins/withCoreLibraryDesugaring",
       "expo-router",
+      "expo-system-ui",
       [
         "expo-build-properties",
         {
@@ -47,10 +44,11 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#ffffff",
-          "image": "./assets/splash.png",
+          "image": "./assets/icon-receipt.png",
           "imageWidth": 200
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "router": {},
@@ -58,8 +56,9 @@
         "projectId": "bf4a808f-84eb-4b66-b190-41ec96a6b0b4"
       }
     },
-    "runtimeVersion": "1.0.1",
+    "runtimeVersion": "1.0.2",
     "updates": {
+      "fallbackToCacheTimeout": 10000,
       "url": "https://u.expo.dev/bf4a808f-84eb-4b66-b190-41ec96a6b0b4"
     }
   }

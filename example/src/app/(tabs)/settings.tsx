@@ -1,62 +1,50 @@
-import { Stack } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, FC } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Application from 'expo-application';
-import Colors from 'src/utils/colors';
-import Storage, { AppEnvironment } from 'src/utils/storage';
 import * as RnPosAndroidIntegration from 'rn-pos-android-integration';
-
 import type { PosMode } from 'rn-pos-android-integration';
 
-interface SettingsButtonProps {
-  title: string;
-  onPress: () => void;
-  isSelected: boolean;
-  hasRightMargin?: boolean;
-}
+import BrandLogo from 'src/components/brand-logo';
+import ScreenHeader from 'src/components/screen-header';
+import SegmentedControl, { type Option } from 'src/components/segmented-control';
+import { useColors } from 'src/utils/colors';
+import Storage, { AppEnvironment } from 'src/utils/storage';
 
-const SettingsButton: FC<SettingsButtonProps> = ({ isSelected, title, onPress, hasRightMargin }) => {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flex: 1,
-        paddingVertical: 12,
-        borderWidth: 1,
-        borderRadius: 6,
-        borderColor: isSelected ? Colors.primary : Colors.secondaryLight,
-        backgroundColor: isSelected ? Colors.primary : Colors.white,
-        marginRight: hasRightMargin ? 10 : 0,
-      }}
-    >
-      <Text
-        style={{
-          color: isSelected ? Colors.white : Colors.primary,
-          fontWeight: 'bold',
-          textAlign: 'center',
-          textTransform: 'uppercase',
-        }}
-      >
-        {title}
-      </Text>
-    </Pressable>
-  );
-};
+const POS_MODE_OPTIONS: Option<PosMode>[] = [
+  { label: 'Sunmi POS', value: 'sunmi-pos' },
+  { label: 'Soft POS', value: 'soft-pos' },
+];
+
+const ENVIRONMENT_OPTIONS: Option<AppEnvironment>[] = [
+  { label: 'Dev', value: 'dev' },
+  { label: 'Test', value: 'test' },
+  { label: 'Live', value: 'live' },
+];
+
+const SectionCard: FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <View className="gap-3">
+    <Text className="ml-1 text-xs font-semibold uppercase tracking-wider text-muted">{label}</Text>
+    <View className="rounded-2xl bg-surface p-4" style={{ borderCurve: 'continuous' }}>
+      {children}
+    </View>
+  </View>
+);
 
 const Settings: FC = () => {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
   const [apiKey, setApiKey] = useState<string | undefined>();
   const [posMode, setPosMode] = useState<PosMode>('sunmi-pos');
   const [environment, setEnvironment] = useState<AppEnvironment>(Storage.DEFAULT_ENVIRONMENT);
 
-  const appVersion = useMemo(() => {
-    return `${Application.nativeApplicationVersion} - ${Application.nativeBuildVersion}`;
-  }, []);
+  const appVersion = useMemo(
+    () => `${Application.nativeApplicationVersion} · ${Application.nativeBuildVersion}`,
+    []
+  );
 
-  const onSaveApiKey = useCallback((apiKey: string) => {
-    Storage.storeApiKey(apiKey).catch((error) => {
-      Alert.alert('Error', (error as Error)?.message);
-    });
+  const onSaveApiKey = useCallback((value: string) => {
+    Storage.storeApiKey(value).catch((error) => Alert.alert('Error', (error as Error)?.message));
   }, []);
 
   const onSavePosMode = useCallback(async (mode: PosMode) => {
@@ -69,126 +57,86 @@ const Settings: FC = () => {
     }
   }, []);
 
-  const tryToInitializeApiKey = useCallback(async () => {
-    const apiKey = await Storage.getApiKey();
-    if (apiKey) {
-      setApiKey(apiKey);
-    } else {
-      // Uncomment the following lines as a workaround to inject the API key in development
-      const yourAPIKey = '2f2ecfab0b608bec716955f13d6930c66173ca8e'; // Dev API key
-      setApiKey(yourAPIKey);
-      await onSaveApiKey(yourAPIKey);
-    }
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [storedKey, storedMode, storedEnv] = await Promise.all([
+          Storage.getApiKey(),
+          Storage.getPosMode(),
+          Storage.getEnvironment(),
+        ]);
+        if (!active) {
+          return;
+        }
+        const mode = storedMode ?? 'sunmi-pos';
+        RnPosAndroidIntegration.setPosMode(mode);
+        setPosMode(mode);
+        setEnvironment(storedEnv);
+        if (storedKey) {
+          setApiKey(storedKey);
+        } else {
+          // Workaround to inject a default API key in development.
+          const yourAPIKey = '2f2ecfab0b608bec716955f13d6930c66173ca8e';
+          setApiKey(yourAPIKey);
+          onSaveApiKey(yourAPIKey);
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.error(error);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [onSaveApiKey]);
 
-  const initializePosMode = useCallback(async () => {
-    const storedPosMode = await Storage.getPosMode();
-    const mode = storedPosMode ?? 'sunmi-pos';
-    setPosMode(mode);
-    RnPosAndroidIntegration.setPosMode(mode);
+  const onChangeEnvironment = useCallback((option: AppEnvironment) => {
+    setEnvironment(option);
+    Storage.storeEnvironment(option).catch((error) => Alert.alert('Error', (error as Error)?.message));
   }, []);
-
-  const initializeEnvironment = useCallback(async () => {
-    const storedEnvironment = await Storage.getEnvironment();
-    setEnvironment(storedEnvironment);
-  }, []);
-
-  useEffect(() => {
-    try {
-      tryToInitializeApiKey();
-    } catch (e) {
-      console.error(e);
-    }
-  }, [tryToInitializeApiKey]);
-
-  useEffect(() => {
-    initializePosMode().catch((error) => {
-      Alert.alert('Error', (error as Error)?.message);
-    });
-  }, [initializePosMode]);
-
-  useEffect(() => {
-    initializeEnvironment().catch((error) => {
-      Alert.alert('Error', (error as Error)?.message);
-    });
-  }, [initializeEnvironment]);
-
-  const posModeOptions = useMemo<PosMode[]>(() => ['sunmi-pos', 'soft-pos'], []);
-  const environmentOptions = useMemo<AppEnvironment[]>(() => ['dev', 'test', 'live'], []);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }}>
-      <Stack.Screen />
-      <View style={{ margin: 15, padding: 15 }}>
-        <Text style={styles.sectionText}>Api Key:</Text>
-        <TextInput
-          defaultValue={apiKey}
-          placeholder="Enter your API key"
-          style={styles.textInput}
-          onEndEditing={({ nativeEvent }) => {
-            if (__DEV__) {
-              console.log('Api key:', nativeEvent.text);
-            }
-            onSaveApiKey(nativeEvent.text);
-          }}
-        />
-        <View style={{ marginTop: 30 }}>
-          <Text style={styles.sectionText}>POS Mode:</Text>
-          <View style={{ flexDirection: 'row' }}>
-            {posModeOptions.map((modeOption, index) => {
-              const isSelected = posMode === modeOption;
-              return (
-                <SettingsButton
-                  key={modeOption}
-                  onPress={() => onSavePosMode(modeOption)}
-                  title={modeOption === 'sunmi-pos' ? 'Sunmi POS' : 'Soft POS'}
-                  isSelected={isSelected}
-                  hasRightMargin={index !== posModeOptions.length - 1}
-                />
-              );
-            })}
-          </View>
-        </View>
-        <View style={{ marginTop: 30 }}>
-          <Text style={styles.sectionText}>Environment:</Text>
-          <View style={{ flexDirection: 'row' }}>
-            {environmentOptions.map((option, index) => {
-              const isSelected = environment === option;
-              return (
-                <SettingsButton
-                  key={option}
-                  onPress={() => {
-                    setEnvironment(option);
-                    Storage.storeEnvironment(option).catch((error) => {
-                      Alert.alert('Error', (error as Error)?.message);
-                    });
-                  }}
-                  title={option}
-                  isSelected={isSelected}
-                  hasRightMargin={index !== environmentOptions.length - 1}
-                />
-              );
-            })}
-          </View>
-        </View>
-        <View style={{ marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: Colors.secondaryLight }}>
-          <Text style={[styles.sectionText, { textAlign: 'center', fontWeight: 'normal', color: Colors.secondary }]}>
-            Version: {appVersion}
+    <View className="flex-1 bg-background">
+      <ScreenHeader title="Settings" subtitle="Configure your payment terminal" />
+
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: insets.bottom + 32, gap: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <SectionCard label="API key">
+          <TextInput
+            defaultValue={apiKey}
+            placeholder="Enter your MultiSafepay API key"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="rounded-xl bg-surface-2 px-4 py-3 text-content"
+            style={{ borderCurve: 'continuous' }}
+            onEndEditing={({ nativeEvent }) => onSaveApiKey(nativeEvent.text)}
+          />
+          <Text className="ml-1 mt-2 text-xs text-muted">Used to create orders against the selected environment.</Text>
+        </SectionCard>
+
+        <SectionCard label="Terminal mode">
+          <SegmentedControl options={POS_MODE_OPTIONS} value={posMode} onChange={onSavePosMode} />
+        </SectionCard>
+
+        <SectionCard label="Environment">
+          <SegmentedControl options={ENVIRONMENT_OPTIONS} value={environment} onChange={onChangeEnvironment} />
+        </SectionCard>
+
+        <View className="mt-2 items-center gap-2">
+          <BrandLogo height={16} />
+          <Text className="text-xs text-muted">MultiSafepay POS demo</Text>
+          <Text className="text-xs text-muted" style={{ fontVariant: ['tabular-nums'] }}>
+            Version {appVersion}
           </Text>
         </View>
-      </View>
-    </SafeAreaView>
+      </ScrollView>
+    </View>
   );
 };
-export default Settings;
 
-const styles = StyleSheet.create({
-  sectionText: { fontWeight: 'bold', marginBottom: 10, color: Colors.primary },
-  textInput: {
-    borderColor: Colors.primary,
-    borderWidth: 1,
-    borderRadius: 5,
-    padding: 10,
-    color: Colors.primary,
-  },
-});
+export default Settings;

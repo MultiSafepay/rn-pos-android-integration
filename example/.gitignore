@@ -37,6 +37,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# uniwind (generated)
+src/uniwind-types.d.ts
+
 # Generated native code (Expo)
 android/
 ios/

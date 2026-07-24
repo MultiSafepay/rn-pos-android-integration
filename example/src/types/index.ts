@@ -1,9 +1,13 @@
 import type { ImageSourcePropType } from 'react-native';
 
+export type Category = 'Starters' | 'Mains' | 'Desserts' | 'Drinks';
+
 export interface Product {
   id: number;
   name: string;
   price: number;
+  category: Category;
+  description?: string;
   asset?: ImageSourcePropType;
   image?: string;
 }
