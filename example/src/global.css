@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+@import 'uniwind';
+
+/*
+ * MultiSafepay POS demo design tokens.
+ * Brand blues come from the official MultiSafepay logo:
+ *   #00abee (light blue) and #004a71 (dark blue).
+ *
+ * Brand-identity colors are fixed across themes (@theme).
+ * Semantic colors are declared for BOTH the light and dark variants — Uniwind
+ * requires every theme to define the same set of variables — and it switches
+ * between them automatically when the device theme is "system".
+ * Utilities generated: bg-/text-/border-{brand,brand-ink,background,surface,
+ * surface-2,content,muted,hairline,primary,on-primary,success,danger}.
+ */
+@theme {
+  /* Brand identity — fixed across themes */
+  --color-brand: #00abee;
+  --color-brand-ink: #004a71;
+}
+
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: #eef2f6;
+      --color-surface: #ffffff;
+      --color-surface-2: #f7fafc;
+      --color-content: #0b2233;
+      --color-muted: #5b6b7b;
+      --color-hairline: #e3e9ef;
+
+      --color-primary: #004a71;
+      --color-on-primary: #ffffff;
+
+      --color-success: #0a8f5b;
+      --color-danger: #d64545;
+    }
+
+    @variant dark {
+      --color-background: #061019;
+      --color-surface: #0f2231;
+      --color-surface-2: #13293b;
+      --color-content: #eaf2f8;
+      --color-muted: #8ba0b2;
+      --color-hairline: #1d3547;
+
+      --color-primary: #00abee;
+      --color-on-primary: #04202f;
+
+      --color-success: #34d399;
+      --color-danger: #f87171;
+    }
+  }
+}

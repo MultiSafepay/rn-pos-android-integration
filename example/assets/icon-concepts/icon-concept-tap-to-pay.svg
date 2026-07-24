@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none"
+    xmlns="http://www.w3.org/2000/svg">
+    <rect width="1024" height="1024" fill="#FFFFFF" />
+    <image href="../msp-glyph-color.png" x="300" y="302" width="424" height="424"
+        preserveAspectRatio="xMidYMid meet" />
+
+    <g filter="url(#softShadow)">
+        <rect x="403" y="535" width="218" height="128" rx="28" fill="#FFFFFF" stroke="#005276"
+            stroke-width="12" />
+        <rect x="438" y="570" width="48" height="34" rx="8" fill="#EAF8FE" stroke="#005276"
+            stroke-width="8" />
+        <path d="M518 586H574" stroke="#10ACE2" stroke-width="12" stroke-linecap="round" />
+        <path d="M518 622H548" stroke="#005276" stroke-width="10" stroke-linecap="round" />
+    </g>
+
+    <g stroke="#10ACE2" stroke-width="12" stroke-linecap="round" filter="url(#arcShadow)">
+        <path d="M632 548C659 575 659 623 632 650" />
+        <path d="M668 518C712 562 712 636 668 680" />
+    </g>
+
+    <defs>
+        <filter id="softShadow" x="373" y="511" width="278" height="188"
+            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+            <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#005276"
+                flood-opacity="0.18" />
+        </filter>
+        <filter id="arcShadow" x="596" y="482" width="117" height="234" filterUnits="userSpaceOnUse"
+            color-interpolation-filters="sRGB">
+            <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#005276" flood-opacity="0.14" />
+        </filter>
+    </defs>
+</svg>

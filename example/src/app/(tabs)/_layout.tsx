@@ -1,53 +1,31 @@
-import IonIcons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMemo } from 'react';
+
 import { useCart } from 'src/providers/cart';
-import Colors from 'src/utils/colors';
+import { brand } from 'src/utils/colors';
 
 export default function TabLayout() {
   const { items } = useCart();
 
-  const numberOfItems = useMemo(() => {
-    return items.reduce((total, item) => total + item.quantity, 0);
-  }, [items]);
+  const numberOfItems = useMemo(() => items.reduce((total, item) => total + item.quantity, 0), [items]);
 
   return (
-    <Tabs
-      initialRouteName="index"
-      screenOptions={{
-        headerTintColor: Colors.primary,
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          fontSize: 24,
-        },
-        tabBarActiveTintColor: Colors.primary,
-        tabBarBadgeStyle: {
-          backgroundColor: Colors.primary,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Shop',
-          tabBarIcon: ({ color }) => <IonIcons size={28} name="storefront-outline" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="checkout"
-        options={{
-          title: 'Checkout',
-          tabBarIcon: ({ color }) => <IonIcons size={28} name="cart-outline" color={color} />,
-          tabBarBadge: items.length > 0 ? numberOfItems : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <IonIcons size={28} name="settings-outline" color={color} />,
-        }}
-      />
-    </Tabs>
+    <NativeTabs tintColor={brand}>
+      <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger.Icon sf="bag.fill" md="storefront" />
+        <NativeTabs.Trigger.Label>Shop</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="checkout">
+        <NativeTabs.Trigger.Icon sf="cart.fill" md="shopping_cart" />
+        <NativeTabs.Trigger.Label>Cart</NativeTabs.Trigger.Label>
+        {numberOfItems > 0 ? <NativeTabs.Trigger.Badge>{String(numberOfItems)}</NativeTabs.Trigger.Badge> : null}
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="settings">
+        <NativeTabs.Trigger.Icon sf="gearshape.fill" md="settings" />
+        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }

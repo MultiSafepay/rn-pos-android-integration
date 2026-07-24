@@ -1,36 +1,31 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as RnPosAndroidIntegration from 'rn-pos-android-integration';
+
+import CartLine from 'src/components/cart-line';
+import EmptyState from 'src/components/empty-state';
 import Pressable from 'src/components/pressable';
+import ScreenHeader from 'src/components/screen-header';
 import { useCart } from 'src/providers/cart';
 import type { PaymentStatus, Product } from 'src/types';
-import Colors from 'src/utils/colors';
+import { useColors } from 'src/utils/colors';
+import { useCurrencyFormatter } from 'src/utils/formatter';
 import { payOrder } from 'src/utils/pay';
 
-import { useCurrencyFormatter } from 'src/utils/formatter';
-import CartCell from 'src/components/cart-cell';
-
-const Checkout = () => {
+export default function Checkout() {
   const { items, addToCart, removeFromCart } = useCart();
   const currencyFormatter = useCurrencyFormatter();
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [inProgress, setInProgress] = useState(false);
 
-  const onAddToCart = useCallback(
-    (product: Product) => {
-      addToCart(product);
-    },
-    [addToCart]
-  );
-
-  const onRemoveFromCart = useCallback(
-    (product: Product) => {
-      removeFromCart(product);
-    },
-    [removeFromCart]
-  );
+  const onAddToCart = useCallback((product: Product) => addToCart(product), [addToCart]);
+  const onRemoveFromCart = useCallback((product: Product) => removeFromCart(product), [removeFromCart]);
 
   const onPay = useCallback(async () => {
     try {
@@ -47,7 +42,7 @@ const Checkout = () => {
   }, [items]);
 
   useEffect(() => {
-    const suscription = RnPosAndroidIntegration.addTransactionListener(({ status }) => {
+    const subscription = RnPosAndroidIntegration.addTransactionListener(({ status }) => {
       const paymentStatus = ((): PaymentStatus => {
         switch (status) {
           case 'CANCELLED':
@@ -68,76 +63,86 @@ const Checkout = () => {
         console.log('🚀 Did receive transaction callback', { status, paymentStatus });
       }
 
-      router.push({
-        pathname: '/(modals)/confirmation',
-        params: { status: paymentStatus },
-      });
+      router.push({ pathname: '/(modals)/confirmation', params: { status: paymentStatus } });
     });
-    return () => {
-      suscription.remove();
-    };
+    return () => subscription.remove();
   }, [router]);
 
-  const totalAmount = useMemo(() => {
-    return items.reduce((total, item) => total + item.product.price * item.quantity, 0);
-  }, [items]);
+  const { totalAmount, itemCount } = useMemo(
+    () => ({
+      totalAmount: items.reduce((total, item) => total + item.product.price * item.quantity, 0),
+      itemCount: items.reduce((total, item) => total + item.quantity, 0),
+    }),
+    [items]
+  );
 
-  const totalLabel = useMemo(() => {
-    return currencyFormatter.format(totalAmount);
-  }, [currencyFormatter, totalAmount]);
+  const isEmpty = items.length === 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.white }}>
-      <Stack.Screen />
-      <FlashList
-        numColumns={1}
-        data={items}
-        renderItem={({ item }) => {
-          return (
-            <CartCell
-              product={item.product}
-              quantity={item.quantity}
-              onIncrease={() => {
-                onAddToCart(item.product);
-              }}
-              onDecrease={() => {
-                onRemoveFromCart(item.product);
-              }}
-            />
-          );
-        }}
+    <View className="flex-1 bg-background">
+      <ScreenHeader
+        title="Order"
+        subtitle={isEmpty ? 'No items yet' : `${itemCount} ${itemCount === 1 ? 'item' : 'items'} in this order`}
       />
-      <View
-        style={{
-          elevation: 1,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -1 },
-          shadowOpacity: 0.1,
-          shadowRadius: 5,
-          borderTopLeftRadius: 10,
-          borderTopRightRadius: 10,
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 15 }}>
-          <Text style={{ fontWeight: 'bold', fontSize: 20 }}>{'Total'}</Text>
-          <Text style={{ fontWeight: 'bold', fontSize: 20 }}>{totalLabel}</Text>
-        </View>
-        <Pressable
-          onPress={onPay}
-          disabled={items.length === 0 || inProgress}
-          style={{
-            borderRadius: 5,
-            margin: 10,
-            padding: 15,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: Colors.primary,
-          }}
-        >
-          <Text style={{ color: Colors.white, fontWeight: 'bold', fontSize: 16 }}>{'Place order'}</Text>
-        </Pressable>
-      </View>
+
+      {isEmpty ? (
+        <EmptyState
+          icon="cart-outline"
+          title="Your cart is empty"
+          message="Add dishes from the menu to start a new order."
+        />
+      ) : (
+        <>
+          <FlashList
+            data={items}
+            keyExtractor={(item) => String(item.product.id)}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 }}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            renderItem={({ item, index }) => (
+              <CartLine
+                item={item}
+                index={index}
+                onIncrease={() => onAddToCart(item.product)}
+                onDecrease={() => onRemoveFromCart(item.product)}
+              />
+            )}
+          />
+
+          <View
+            className="border-t border-hairline bg-surface px-5 pt-4"
+            style={{ paddingBottom: insets.bottom + 12, boxShadow: '0 -6px 20px rgba(11,34,51,0.08)' }}
+          >
+            <View className="mb-1 flex-row items-center justify-between">
+              <Text className="text-muted">Subtotal</Text>
+              <Text className="text-muted" style={{ fontVariant: ['tabular-nums'] }}>
+                {currencyFormatter.format(totalAmount)}
+              </Text>
+            </View>
+            <View className="mb-4 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-content">Total</Text>
+              <Text className="text-2xl font-extrabold text-content" style={{ fontVariant: ['tabular-nums'] }}>
+                {currencyFormatter.format(totalAmount)}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={onPay}
+              disabled={inProgress}
+              className="h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary"
+              style={{ borderCurve: 'continuous', opacity: inProgress ? 0.7 : 1 }}
+            >
+              {inProgress ? (
+                <ActivityIndicator color={colors.onPrimary} />
+              ) : (
+                <Ionicons name="card" size={20} color={colors.onPrimary} />
+              )}
+              <Text className="text-base font-bold text-on-primary">
+                {inProgress ? 'Processing…' : `Charge ${currencyFormatter.format(totalAmount)}`}
+              </Text>
+            </Pressable>
+          </View>
+        </>
+      )}
     </View>
   );
-};
-export default Checkout;
+}
