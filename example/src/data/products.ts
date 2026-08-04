@@ -274,4 +274,20 @@ export const products: Product[] = [
     description: 'Bottled still water, 50cl',
     asset: require(`${imagesFolder}/water.jpg`),
   },
+  {
+    id: 35,
+    name: 'Glass of Tap Water',
+    price: 0.01,
+    category: 'Drinks',
+    description: 'Chilled tap water, 25cl',
+    asset: require(`${imagesFolder}/water.jpg`),
+  },
+  {
+    id: 36,
+    name: 'Extra Espresso Shot',
+    price: 0.01,
+    category: 'Drinks',
+    description: 'Single shot, add to any coffee',
+    asset: require(`${imagesFolder}/coffee-americano.jpg`),
+  },
 ];
