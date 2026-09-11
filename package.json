@@ -1,6 +1,6 @@
 {
   "name": "rn-pos-android-integration",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "React Native module to send request to MultiSafepay Pay App via Intent",
   "main": "build/index.js",
   "types": "build/index.d.ts",

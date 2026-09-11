@@ -14,6 +14,7 @@ declare class RnPosAndroidIntegrationModule extends NativeModule {
     debug?: boolean
   ): void;
   setPosMode(mode: PosMode): void;
+  ackDiagnostics(stage: string): void;
   setValueAsync(value: string): Promise<void>;
   addListener<EventName extends 'onTransactionChanged'>(
     eventName: EventName,

@@ -53,7 +53,9 @@ class RnPosAndroidIntegrationModule : Module() {
     try {
       sendEvent(TRANSACTION_CHANGED_EVENT_NAME, value)
       Diagnostics.note("6. Emitted $status to JS")
+      Diagnostics.addVerdict("SENT")
     } catch (error: Throwable) {
+      Diagnostics.addVerdict("sendFAIL:${error.javaClass.simpleName}")
       // Notifier swallows this so one dead observer cannot abort the others. Report it
       // here too: a status that fails to reach JS otherwise looks exactly like one that
       // was never produced, and those need different fixes.
@@ -70,10 +72,12 @@ class RnPosAndroidIntegrationModule : Module() {
       appContext.reactContext?.let { Diagnostics.attach(it) }
 
       observer = { status ->
+        Diagnostics.addVerdict("fg=$hostIsForeground")
         if (hostIsForeground) {
           emit(status)
         } else {
           Diagnostics.note("5. Host backgrounded; deferring $status until foreground")
+          Diagnostics.addVerdict("DEFERRED")
           pendingStatus = status
         }
       }
@@ -95,8 +99,14 @@ class RnPosAndroidIntegrationModule : Module() {
       pendingStatus?.let {
         pendingStatus = null
         Diagnostics.note("5. Host resumed; flushing deferred $it")
+        Diagnostics.beginVerdict("V flush $it")
         emit(it)
+        Diagnostics.showVerdict()
       }
+
+      // A status that landed while this module was being rebuilt is held by the Notifier,
+      // not by us, so resuming has to ask for it too.
+      Notifier.drainParked()
     }
 
     OnActivityEntersBackground {
@@ -197,6 +207,13 @@ class RnPosAndroidIntegrationModule : Module() {
         posMode = it
         Diagnostics.note("0. posMode set to ${it.mode}")
       } ?: Log.w("pos-app-integration", "Unknown POS mode: $mode")
+    }
+
+    // Called from JS when an event is received. Native cannot otherwise distinguish a
+    // status that never reached JS from one that reached it and was dropped on the way to
+    // the screen, and those need opposite fixes.
+    Function("ackDiagnostics") { stage: String ->
+      Diagnostics.late("JS ACK $stage")
     }
 
     AsyncFunction("setValueAsync") { value: String ->

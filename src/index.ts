@@ -87,6 +87,17 @@ export function initiateRemotePayment({
   initiatePayment({ amount, items, orderId, description, sessionId, debug });
 }
 
+/**
+ * Tells the native trace that JS received something. Native cannot otherwise tell a status
+ * that never reached JS from one that reached it and was lost on the way to the screen --
+ * and those two have opposite fixes. No-op unless `debug` was passed to initiatePayment.
+ */
+export function ackDiagnostics(stage: string): void {
+  if (Platform.OS === 'android') {
+    RnPosAndroidIntegrationModule.ackDiagnostics(stage);
+  }
+}
+
 export async function setValueAsync(value: string) {
   return await RnPosAndroidIntegrationModule.setValueAsync(value);
 }

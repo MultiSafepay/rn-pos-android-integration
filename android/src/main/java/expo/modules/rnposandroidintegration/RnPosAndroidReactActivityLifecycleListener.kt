@@ -160,6 +160,9 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   }
 
   private fun receivedCallbackIntent(status: TransactionStatus) {
+    // Opens the verdict: every hop from here on adds to one line that is shown after the
+    // toast burst has drained, because the tail of the play-by-play is what gets dropped.
+    Diagnostics.beginVerdict("V $status")
     Diagnostics.note("4. Reporting $status to Notifier")
     Notifier.onTransactionStatusChanged(status)
   }
