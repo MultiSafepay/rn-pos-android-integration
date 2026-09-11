@@ -1,9 +1,9 @@
-import { EventSubscription } from 'expo-modules-core';
+import type { EventSubscription } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
 // Import the native module. On web, it will be resolved to RnPosAndroidIntegration.web.ts
 // and on native platforms to RnPosAndroidIntegration.ts
-import { ChangeEventPayload, PosMode, RnPosAndroidIntegrationViewProps } from './RnPosAndroidIntegration.types';
+import type { ChangeEventPayload, PosMode, RnPosAndroidIntegrationViewProps } from './RnPosAndroidIntegration.types';
 import RnPosAndroidIntegrationModule from './RnPosAndroidIntegrationModule';
 import RnPosAndroidIntegrationView from './RnPosAndroidIntegrationView';
 
@@ -88,4 +88,5 @@ export function addTransactionListener(listener: (event: ChangeEventPayload) => 
   return RnPosAndroidIntegrationModule.addListener('onTransactionChanged', listener);
 }
 
-export { RnPosAndroidIntegrationView, RnPosAndroidIntegrationViewProps, ChangeEventPayload, PosMode };
+export { RnPosAndroidIntegrationView };
+export type { ChangeEventPayload, PosMode, RnPosAndroidIntegrationViewProps };

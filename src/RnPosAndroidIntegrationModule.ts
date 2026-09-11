@@ -1,6 +1,6 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
-import { ChangeEventPayload, PosMode } from './RnPosAndroidIntegration.types';
+import type { ChangeEventPayload, PosMode } from './RnPosAndroidIntegration.types';
 
 declare class RnPosAndroidIntegrationModule extends NativeModule {
   canInitiatePayment(): Promise<boolean>;

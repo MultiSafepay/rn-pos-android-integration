@@ -19,6 +19,14 @@ class RnPosAndroidIntegrationModule : Module() {
   private var posMode: PosMode = PosMode.SUNMI
   private val lifecycleListener = RnPosAndroidReactActivityLifecycleListener()
 
+  // Both onNewIntent and onActivityResult are delivered *before* onResume, so a status
+  // emitted straight from them reaches JS while the host Activity is still paused.
+  // Any navigation JS performs then is committed against a stopped Activity, which is
+  // what leaves the app on a blank, unresponsive screen. Hold the status until the
+  // React host is actually resumed and emit it there.
+  private var hostIsForeground = false
+  private var pendingStatus: TransactionStatus? = null
+
   @SuppressLint("NewApi")
   private fun buildLaunchIntent(mode: PosMode): Intent? {
     return when (mode) {
@@ -40,20 +48,40 @@ class RnPosAndroidIntegrationModule : Module() {
     }
   }
 
+  private fun emit(status: TransactionStatus) {
+    val value: Map<String, String> = mapOf("status" to status.toString())
+    sendEvent(TRANSACTION_CHANGED_EVENT_NAME, value)
+    Log.d(TRANSACTION_CHANGED_EVENT_NAME, value.toString())
+  }
+
   override fun definition() = ModuleDefinition {
     Name("RnPosAndroidIntegration")
     Events(TRANSACTION_CHANGED_EVENT_NAME)
 
     OnCreate {
-      observer = {
-        val value: Map<String, String> = mapOf("status" to it.toString())
-        this@RnPosAndroidIntegrationModule.sendEvent(TRANSACTION_CHANGED_EVENT_NAME, value)
-        Log.d(TRANSACTION_CHANGED_EVENT_NAME, value.toString())
+      observer = { status ->
+        if (hostIsForeground) {
+          emit(status)
+        } else {
+          Log.d("pos-app-integration", "Host is not resumed yet; deferring $status until foreground")
+          pendingStatus = status
+        }
       }
       Notifier.registerObserver(observer)
     }
 
     OnDestroy { Notifier.deregisterObserver(observer) }
+
+    OnActivityEntersForeground {
+      hostIsForeground = true
+
+      pendingStatus?.let {
+        pendingStatus = null
+        emit(it)
+      }
+    }
+
+    OnActivityEntersBackground { hostIsForeground = false }
 
     // Handle activity results coming back to the host Activity.
     OnActivityResult { activity, payload ->
@@ -63,11 +91,11 @@ class RnPosAndroidIntegrationModule : Module() {
       }
     }
 
-    // Also handle new intents (SoftPOS may callback this way)
+    // The MSP Pay App (Sunmi) reports app-to-app through a new Intent. This was gated
+    // on SOFT_POS, which is the one mode that never calls onNewIntent, so the
+    // middleware callback was discarded. The listener ignores intents without a status.
     OnNewIntent { intent ->
-      if (posMode == PosMode.SOFT_POS) {
-        lifecycleListener.onNewIntent(intent)
-      }
+      lifecycleListener.onNewIntent(intent)
     }
 
     AsyncFunction("canInitiatePayment") { promise: Promise ->
@@ -111,6 +139,10 @@ class RnPosAndroidIntegrationModule : Module() {
         intent.putExtra("skip_manual_input", true)
         intent.putExtra("callback_activity", activityClass)
         intent.putExtra("callback_package", appPackageName)
+
+        // Drop any status still waiting to be flushed; it belongs to a previous
+        // transaction and must not surface as the result of this one.
+        pendingStatus = null
 
         activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
       }

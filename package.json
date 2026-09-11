@@ -1,6 +1,6 @@
 {
   "name": "rn-pos-android-integration",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "React Native module to send request to MultiSafepay Pay App via Intent",
   "main": "build/index.js",
   "types": "build/index.d.ts",
@@ -38,13 +38,18 @@
   "dependencies": {},
   "devDependencies": {
     "@types/react": "~19.2.14",
-    "expo-module-scripts": "^5.0.7",
-    "expo": "^56.0.17",
-    "react-native": "0.85.3"
+    "expo-module-scripts": "^56.0.3",
+    "expo": "^57.0.9",
+    "react-native": "0.86.3"
   },
   "peerDependencies": {
     "expo": "*",
     "react": "*",
     "react-native": "*"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^13.0.0"
+    }
   }
 }
