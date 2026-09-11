@@ -33,10 +33,18 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     if (safeHasExtra(intent, "status")) {
       val status = safeIntExtra(intent, "status") ?: 0
       val message = safeStringExtra(intent, "message")
-      Log.d(TAG, "Received Pay App callback via status=$status message=$message")
+      Diagnostics.note("3. onNewIntent has status=$status message=$message")
       this.handleMiddlewareCallback(status, message)
     } else {
-      Log.w(TAG, "Pay App onNewIntent callback did not include a 'status' extra")
+      val strayResultStatus = safeStringExtra(intent, "result_status")
+      if (strayResultStatus != null) {
+        // Read-only on purpose. If a SoftPOS outcome is arriving here rather than through
+        // onActivityResult it is being dropped, but confirm that from the recording
+        // before wiring it up -- guessing is what produced the last two fixes.
+        Diagnostics.note("3. onNewIntent has NO 'status' but DOES have result_status=$strayResultStatus -- DROPPED")
+      } else {
+        Diagnostics.note("3. onNewIntent has no 'status' extra -- DROPPED")
+      }
     }
 
     return super.onNewIntent(intent)
@@ -45,7 +53,7 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   // Not an interface override (ReactActivityLifecycleListener may not declare this); invoked via ActivityEventListener in module.
   // Mirrors PaymentActivity#onActivityResult in the reference integration.
   fun handleActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
-    Log.d(TAG, "SoftPOS result intent data; requestCode=$requestCode, resultCode=$resultCode activity=${activity?.javaClass?.simpleName}")
+    Diagnostics.note("3. handleActivityResult req=$requestCode result=$resultCode activity=${activity?.javaClass?.simpleName}")
 
     if (requestCode != SOFT_POS_REQUEST_CODE) {
       return
@@ -55,14 +63,14 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     val message = data?.let { safeStringExtra(it, "message") }
     val description = data?.let { safeStringExtra(it, "description") }
 
-    Log.d(TAG, "Received SoftPOS activity result resultCode=$resultCode result_status=$resultStatus message=$message description=$description")
+    Diagnostics.note("3b. result_status=$resultStatus message=$message description=$description")
 
     // Every path out of here reports a status. SoftPOS finishes a declined or expired
     // card with RESULT_CANCELED and puts the outcome in `result_status`, so gating the
     // read on RESULT_OK dropped exactly the results this file exists to deliver, and
     // the host's pay screen -- which only moves when an event arrives -- waited forever.
     if (resultStatus == null) {
-      Log.w(TAG, "SoftPOS returned no result_status; resultCode=$resultCode, reporting CANCELLED")
+      Diagnostics.note("3c. no result_status on the result; reporting CANCELLED")
       this.receivedCallbackIntent(TransactionStatus.CANCELLED)
       return
     }
@@ -152,7 +160,7 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   }
 
   private fun receivedCallbackIntent(status: TransactionStatus) {
-    Log.d(TAG, "Reporting transaction status=$status")
+    Diagnostics.note("4. Reporting $status to Notifier")
     Notifier.onTransactionStatusChanged(status)
   }
 }

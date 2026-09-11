@@ -26,6 +26,13 @@ interface InitiateManualPaymentRequest {
   items: OrderItem[];
   orderId: string;
   description: string;
+  /**
+   * Mirrors the native callback trace onto the screen as toasts, on top of the usual
+   * Logcat output. For diagnosing terminals that cannot take a debugger -- attaching one
+   * stops Tap to Pay working -- so the trace has to be filmable. Leave off in production:
+   * it puts transaction details on a customer-facing screen.
+   */
+  debug?: boolean;
 }
 
 interface InitiateRemotePaymentRequest extends InitiateManualPaymentRequest {
@@ -36,7 +43,7 @@ interface InitiatePaymentRequest extends InitiateManualPaymentRequest {
   sessionId?: string;
 }
 
-const initiatePayment = ({ items, amount, orderId, description, sessionId }: InitiatePaymentRequest) => {
+const initiatePayment = ({ items, amount, orderId, description, sessionId, debug }: InitiatePaymentRequest) => {
   if (Platform.OS === 'android') {
     const validItems = items.map((item) => {
       return {
@@ -53,13 +60,20 @@ const initiatePayment = ({ items, amount, orderId, description, sessionId }: Ini
       JSON.stringify(validItems),
       orderId,
       description,
-      sessionId
+      sessionId,
+      debug ?? false
     );
   }
 };
 
-export function initiateManualPayment({ amount, items, orderId, description }: InitiateManualPaymentRequest): void {
-  initiatePayment({ amount, items, orderId, description });
+export function initiateManualPayment({
+  amount,
+  items,
+  orderId,
+  description,
+  debug,
+}: InitiateManualPaymentRequest): void {
+  initiatePayment({ amount, items, orderId, description, debug });
 }
 
 export function initiateRemotePayment({
@@ -68,8 +82,9 @@ export function initiateRemotePayment({
   items,
   description,
   sessionId,
+  debug,
 }: InitiateRemotePaymentRequest): void {
-  initiatePayment({ amount, items, orderId, description, sessionId });
+  initiatePayment({ amount, items, orderId, description, sessionId, debug });
 }
 
 export async function setValueAsync(value: string) {

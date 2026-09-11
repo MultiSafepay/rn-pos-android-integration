@@ -10,7 +10,8 @@ declare class RnPosAndroidIntegrationModule extends NativeModule {
     serializedItems: string,
     orderId: string,
     description: string,
-    sessionId?: string
+    sessionId?: string,
+    debug?: boolean
   ): void;
   setPosMode(mode: PosMode): void;
   setValueAsync(value: string): Promise<void>;
