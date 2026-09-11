@@ -3,7 +3,7 @@
     "name": "rn-pos-android-integration-example",
     "slug": "rn-pos-android-integration-example",
     "scheme": "rn-pos-android-integration-example",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "default",
     "icon": "./assets/icon-receipt.png",
     "userInterfaceStyle": "automatic",
@@ -48,7 +48,9 @@
           "imageWidth": 200
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-image",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {},
@@ -56,7 +58,7 @@
         "projectId": "bf4a808f-84eb-4b66-b190-41ec96a6b0b4"
       }
     },
-    "runtimeVersion": "1.0.2",
+    "runtimeVersion": "1.0.3",
     "updates": {
       "fallbackToCacheTimeout": 10000,
       "url": "https://u.expo.dev/bf4a808f-84eb-4b66-b190-41ec96a6b0b4"
