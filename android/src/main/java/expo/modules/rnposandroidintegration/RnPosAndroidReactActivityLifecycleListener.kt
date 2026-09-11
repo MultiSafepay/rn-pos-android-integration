@@ -51,31 +51,36 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
       return
     }
 
-    // The reference integration only reads a SoftPOS result when it comes back as
-    // RESULT_OK. If a declined transaction ever arrives with a different result code
-    // this log is the thing to look for: the result is dropped and the caller is left
-    // waiting, exactly the failure this file exists to prevent.
-    if (resultCode != Activity.RESULT_OK) {
-      Log.w(TAG, "SoftPOS result ignored; resultCode=$resultCode is not RESULT_OK, result_status=${data?.let { safeStringExtra(it, "result_status") }}")
+    val resultStatus = data?.let { safeStringExtra(it, "result_status") }
+    val message = data?.let { safeStringExtra(it, "message") }
+    val description = data?.let { safeStringExtra(it, "description") }
+
+    Log.d(TAG, "Received SoftPOS activity result resultCode=$resultCode result_status=$resultStatus message=$message description=$description")
+
+    // Every path out of here reports a status. SoftPOS finishes a declined or expired
+    // card with RESULT_CANCELED and puts the outcome in `result_status`, so gating the
+    // read on RESULT_OK dropped exactly the results this file exists to deliver, and
+    // the host's pay screen -- which only moves when an event arrives -- waited forever.
+    if (resultStatus == null) {
+      Log.w(TAG, "SoftPOS returned no result_status; resultCode=$resultCode, reporting CANCELLED")
+      this.receivedCallbackIntent(TransactionStatus.CANCELLED)
       return
     }
-
-    if (data == null) {
-      Log.w(TAG, "SoftPOS result missing intent data; resultCode=$resultCode")
-      return
-    }
-
-    val resultStatus = safeStringExtra(data, "result_status")
-    val message = safeStringExtra(data, "message")
-    val description = safeStringExtra(data, "description")
-
-    Log.d(TAG, "Received SoftPOS activity result result_status=$resultStatus message=$message description=$description")
 
     // Only `result_status` is read here. A declined transaction also carries the
     // decline code in `status`, and consulting that first sent the result down the
     // middleware branch, where the code matched nothing and the callback was dropped.
-    val status = when (resultStatus?.uppercase(Locale.ROOT)) {
-      "COMPLETED" -> TransactionStatus.COMPLETED
+    val status = when (resultStatus.uppercase(Locale.ROOT)) {
+      // A success is trusted only when the result code agrees. COMPLETED on a non-OK
+      // result is self-contradictory, and marking an unpaid order paid is the
+      // expensive way to be wrong.
+      "COMPLETED" ->
+        if (resultCode == Activity.RESULT_OK) {
+          TransactionStatus.COMPLETED
+        } else {
+          Log.w(TAG, "SoftPOS reported COMPLETED with resultCode=$resultCode; reporting UNDEFINED")
+          TransactionStatus.UNDEFINED
+        }
       "CANCELLED" -> TransactionStatus.CANCELLED
       "DECLINED" -> TransactionStatus.DECLINED
       else -> {
