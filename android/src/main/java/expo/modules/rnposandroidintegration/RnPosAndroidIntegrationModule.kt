@@ -22,13 +22,16 @@ class RnPosAndroidIntegrationModule : Module() {
   private var posMode: PosMode = PosMode.SUNMI
   private val lifecycleListener = RnPosAndroidReactActivityLifecycleListener()
 
-  // Both onNewIntent and onActivityResult are delivered *before* onResume, so a status
-  // emitted straight from them reaches JS while the host Activity is still paused.
-  // Any navigation JS performs then is committed against a stopped Activity, which is
-  // what leaves the app on a blank, unresponsive screen. Hold the status until the
-  // React host is actually resumed and emit it there.
-  private var hostIsForeground = false
-  private var pendingStatus: TransactionStatus? = null
+  // There is deliberately no "wait until the host is resumed" gate here any more.
+  //
+  // AppContext.onHostResume() returns early when currentActivity is null and throws when the
+  // Activity is not an AppCompatActivity -- either way ACTIVITY_ENTERS_FOREGROUND is never
+  // posted. onHostPause() has no such guard and always posts ACTIVITY_ENTERS_BACKGROUND. So
+  // a flag driven by those two events is a latch that can stick shut, and a status held
+  // behind it is never delivered: the host waits on a transaction that already resolved.
+  // That is a permanent freeze, which is strictly worse than the momentary blank screen the
+  // gate was guessing at. The reference integration acts on the result synchronously inside
+  // onActivityResult and has never needed one.
 
   // Which Activity instance launched the payment, so the result can say whether it came
   // back to the same one. A different instance means the React surface JS is rendering
@@ -69,21 +72,15 @@ class RnPosAndroidIntegrationModule : Module() {
   }
 
   /**
-   * Runs after the host Activity's view hierarchy has been through a draw pass.
+   * Hands work to the next main-loop turn.
    *
-   * Resuming is not the same as being ready to draw. OnActivityEntersForeground fires at the
-   * start of the resume, before the React surface has re-attached, so a status emitted there
-   * lands on a tree that is not on screen -- the blank screen the deferral above exists to
-   * prevent, just moved later. A post on the decor view runs once layout and draw have
-   * happened, which is the point the surface is actually up.
+   * This is the one part of the old deferral worth keeping: it gets the emit off the
+   * synchronous onActivityResult stack, so JS never re-enters native from inside an Activity
+   * callback. Unlike a post on the decor view it does not depend on the view being attached,
+   * and unlike a lifecycle flag it cannot be withheld -- the runnable always executes.
    */
-  private fun afterNextDraw(block: () -> Unit) {
-    val decorView = currentActivity?.window?.decorView
-    if (decorView != null) {
-      decorView.post { block() }
-    } else {
-      Handler(Looper.getMainLooper()).post { block() }
-    }
+  private fun postToMain(block: () -> Unit) {
+    Handler(Looper.getMainLooper()).post { block() }
   }
 
   @SuppressLint("NewApi")
@@ -131,13 +128,19 @@ class RnPosAndroidIntegrationModule : Module() {
       appContext.reactContext?.let { Diagnostics.attach(it) }
 
       observer = { status ->
-        Diagnostics.addVerdict("fg=$hostIsForeground")
-        if (hostIsForeground) {
-          emit(status)
-        } else {
-          Diagnostics.note("5. Host backgrounded; deferring $status until foreground")
-          Diagnostics.addVerdict("DEFERRED")
-          pendingStatus = status
+        // Unconditional. Whatever the host's lifecycle is doing, the status goes to JS on the
+        // next main-loop turn; there is no state in which it can be held back.
+        postToMain {
+          try {
+            emit(status)
+          } catch (error: Throwable) {
+            // This runs a loop turn after Notifier.dispatch returned, so nothing upstream is
+            // catching any more and an escape here would take down the main thread. sendEvent
+            // fails when the AppContext went away in between; park the status so the next
+            // module instance delivers it instead of losing it.
+            Notifier.park(status)
+          }
+          Diagnostics.showVerdict()
         }
       }
       Notifier.registerObserver(observer)
@@ -145,36 +148,22 @@ class RnPosAndroidIntegrationModule : Module() {
     }
 
     OnDestroy {
-      // A teardown mid-transaction takes `posMode` and `pendingStatus` with it, so say
-      // so on screen: it turns a mystified freeze into an explained one.
-      Diagnostics.note("Module destroyed; pendingStatus=$pendingStatus posMode=${posMode.mode}")
+      // A teardown mid-transaction takes `posMode` with it, so say so on screen: it turns
+      // a mystified freeze into an explained one.
+      Diagnostics.note("Module destroyed; posMode=${posMode.mode}")
       Notifier.deregisterObserver(observer)
     }
 
     OnActivityEntersForeground {
-      hostIsForeground = true
       Diagnostics.setForeground(true)
 
-      pendingStatus?.let {
-        pendingStatus = null
-        Diagnostics.note("5. Host resumed; deferring flush of $it to the next draw")
-        Diagnostics.beginVerdict("V flush $it")
-        Diagnostics.addVerdict(describeActivity())
-        Diagnostics.addVerdict(if (describeActivity() == launchActivityKey) "sameAct" else "DIFFERENT-ACT")
-        afterNextDraw {
-          Diagnostics.note("5b. Surface drawn; emitting $it now")
-          emit(it)
-          Diagnostics.showVerdict()
-        }
-      }
-
       // A status that landed while this module was being rebuilt is held by the Notifier,
-      // not by us, so resuming has to ask for it too.
+      // not by us, so resuming has to ask for it too. This is a catch-up for a module that
+      // did not exist when the result arrived -- not a gate on normal delivery.
       Notifier.drainParked()
     }
 
     OnActivityEntersBackground {
-      hostIsForeground = false
       Diagnostics.setForeground(false)
     }
 
@@ -276,10 +265,6 @@ class RnPosAndroidIntegrationModule : Module() {
           intent.putExtra("callback_activity", activityClass)
           intent.putExtra("callback_package", appPackageName)
         }
-
-        // Drop any status still waiting to be flushed; it belongs to a previous
-        // transaction and must not surface as the result of this one.
-        pendingStatus = null
 
         launchActivityKey = describeActivity(activity)
         launchConfigKey = describeConfig(activity)

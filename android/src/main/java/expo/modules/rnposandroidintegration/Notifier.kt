@@ -25,6 +25,19 @@ object Notifier {
         observers.remove(observer)
     }
 
+    /**
+     * Parks a status that could not be handed to JS after all.
+     *
+     * Delivery finishes a turn of the main loop after dispatch returns, so a failure there
+     * lands outside [dispatch]'s try/catch. Without this the status would be lost and the
+     * host would wait on a transaction that had already resolved.
+     */
+    fun park(status: TransactionStatus) {
+        synchronized(this) { parked = status }
+        Diagnostics.note("5d. Re-parked $status after a failed delivery")
+        Diagnostics.addVerdict("REPARKED")
+    }
+
     /** Hands whatever is parked to the current observers, if there are any. */
     fun drainParked() {
         if (observers.isEmpty()) {
@@ -55,21 +68,35 @@ object Notifier {
 
         Diagnostics.note("5. Dispatching $transactionStatus to ${observers.size} observer(s)")
         dispatch(transactionStatus)
-        Diagnostics.showVerdict()
+        // The verdict is NOT shown here. Delivery now finishes a main-loop turn later, so
+        // showing it at this point would print a line that is missing its own outcome --
+        // the observer shows it once the emit has actually been attempted.
     }
 
     private fun dispatch(transactionStatus: TransactionStatus) {
         // Notify all observers. A stale observer belonging to a torn-down AppContext
         // throws when it tries to emit; swallowing that here keeps it from aborting
         // the remaining observers and from escaping into the Activity lifecycle.
+        var delivered = false
         observers.forEach {
             try {
                 it(transactionStatus)
+                delivered = true
             } catch (error: Throwable) {
                 Diagnostics.addVerdict("observerTHREW:${error.javaClass.simpleName}")
                 Diagnostics.note("5b. Observer THREW on $transactionStatus: ${error.javaClass.simpleName}")
                 Log.e("pos-app-integration", "Observer failed to handle transaction status $transactionStatus", error)
             }
+        }
+
+        // Every observer failed, so this status reached nobody. A list of dead observers is
+        // indistinguishable from an empty one as far as the host is concerned, so treat it
+        // the same way: park it for the next module rather than lose it and hang.
+        if (!delivered) {
+            synchronized(this) { parked = transactionStatus }
+            Diagnostics.note("5c. No observer accepted $transactionStatus; parking it")
+            Diagnostics.addVerdict("PARKED-AFTER-FAILURE")
+            Diagnostics.showVerdict()
         }
     }
 }
