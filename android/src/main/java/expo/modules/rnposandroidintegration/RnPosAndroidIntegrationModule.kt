@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.ViewGroup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import expo.modules.kotlin.Promise
@@ -21,6 +22,10 @@ internal const val SOFT_POS_REQUEST_CODE = 6017
 // guarantee that no status is ever held indefinitely.
 private const val DELIVERY_TIMEOUT_MS = 5_000L
 private const val DELIVERY_POLL_MS = 100L
+
+// Long enough for JS to navigate and React to commit a frame, short enough to still make the
+// second copy of the verdict (which is shown 9s after delivery).
+private const val SURFACE_PROBE_DELAY_MS = 1_500L
 
 class RnPosAndroidIntegrationModule : Module() {
   private val context get() = requireNotNull(appContext.reactContext)
@@ -72,6 +77,33 @@ class RnPosAndroidIntegrationModule : Module() {
     }
     return "o=${configuration.orientation} w=${configuration.screenWidthDp} h=${configuration.screenHeightDp} " +
       "sw=${configuration.smallestScreenWidthDp} dens=${configuration.densityDpi} ui=${configuration.uiMode} disp=$displayId"
+  }
+
+  /**
+   * The state of the Activity's view tree -- the thing a white screen is actually about.
+   *
+   * Every logical hop now reports success on a run that ends white: the status is mapped,
+   * emitted, received by JS, navigated to, and the screen mounts. So the question is no
+   * longer what the code computed but whether anything is on screen to draw. A React root
+   * that is absent, zero-sized or not visible says the surface died; a healthy root of the
+   * right size says the surface is fine and the pixels are the app's own.
+   */
+  private fun describeSurface(activity: Activity? = currentActivity): String {
+    val content = try {
+      activity?.findViewById<ViewGroup>(android.R.id.content)
+    } catch (error: RuntimeException) {
+      return "surface=unreadable:${error.javaClass.simpleName}"
+    } ?: return "surface=none"
+
+    val root = if (content.childCount > 0) content.getChildAt(0) else null
+    val rootDesc = if (root == null) {
+      "root=<none>"
+    } else {
+      "root=${root.javaClass.simpleName} ${root.width}x${root.height} vis=${root.visibility} " +
+        "kids=${(root as? ViewGroup)?.childCount ?: -1} shown=${root.isShown}"
+    }
+
+    return "content=${content.width}x${content.height} kids=${content.childCount} $rootDesc"
   }
 
   private fun describeActivity(activity: Activity? = currentActivity): String {
@@ -141,6 +173,15 @@ class RnPosAndroidIntegrationModule : Module() {
       Diagnostics.note("6. Delivery threw; parking $status")
       Notifier.park(status)
     }
+
+    // Once JS has had time to navigate and draw. A root that is healthy here while the
+    // screen is white moves the question off this module entirely.
+    mainHandler.postDelayed({
+      val surface = describeSurface()
+      Diagnostics.note("7. surface after render: $surface")
+      Diagnostics.addVerdict("surf:$surface")
+    }, SURFACE_PROBE_DELAY_MS)
+
     Diagnostics.showVerdict()
   }
 
@@ -231,6 +272,7 @@ class RnPosAndroidIntegrationModule : Module() {
         Diagnostics.addVerdict("cfgSame")
       }
       Diagnostics.note(Diagnostics.describeIntent("2b. result intent", payload.data))
+      Diagnostics.note("2f. surface at result: ${describeSurface(activity)}")
 
       if (payload.requestCode != SOFT_POS_REQUEST_CODE) {
         Diagnostics.note("2c. IGNORED: requestCode ${payload.requestCode} is not $SOFT_POS_REQUEST_CODE")
