@@ -24,6 +24,7 @@
     },
     "plugins": [
       "./plugins/withCoreLibraryDesugaring",
+      "./plugins/withGradleDaemonMemory",
       "expo-router",
       "expo-system-ui",
       [
