@@ -68,6 +68,19 @@ export const startOrder = async ({ apiKey, amount, orderId, description }: Start
   }
 };
 
+/**
+ * Mirrors the native payment-callback trace onto the screen as toasts. The terminals this is
+ * debugged on take neither a debugger nor adb, so the screen is the only instrument.
+ */
+const DEBUG_TOASTS = true;
+
+/**
+ * Launches SoftPOS without the callback extras, so it does not bring this app back
+ * automatically when a transaction resolves and the tester controls the return. Off by
+ * default -- with it on you are left sitting in SoftPOS after paying.
+ */
+const DEBUG_DO_NOT_RETURN = false;
+
 interface PayOrderRequest {
   cartItems: CartItem[];
 }
@@ -104,6 +117,8 @@ export const payOrder = async ({ cartItems }: PayOrderRequest) => {
     orderId,
     description,
     sessionId: data.session_id,
+    debug: DEBUG_TOASTS,
+    doNotReturn: DEBUG_DO_NOT_RETURN,
   });
 
   return Promise.resolve();

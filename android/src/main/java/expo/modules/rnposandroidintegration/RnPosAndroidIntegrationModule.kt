@@ -34,6 +34,32 @@ class RnPosAndroidIntegrationModule : Module() {
   // back to the same one. A different instance means the React surface JS is rendering
   // into is not the one on screen.
   private var launchActivityKey: String? = null
+  private var launchConfigKey: String? = null
+
+  /**
+   * The Activity's configuration and display, captured either side of the payment app.
+   *
+   * Expo's MainActivity declares a broad `android:configChanges`, so a configuration change
+   * is absorbed rather than recreating the Activity -- the instance stays identical, which is
+   * why comparing identity alone said nothing. If the configuration differs between launch
+   * and result, the host was reconfigured underneath a React surface that never recovered,
+   * and that is a different failure from anything in the payment path.
+   */
+  @Suppress("DEPRECATION")
+  private fun describeConfig(activity: Activity? = currentActivity): String {
+    val configuration = activity?.resources?.configuration ?: return "cfg=none"
+    val displayId = try {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        activity.display?.displayId ?: -1
+      } else {
+        activity.windowManager?.defaultDisplay?.displayId ?: -1
+      }
+    } catch (error: RuntimeException) {
+      -2
+    }
+    return "o=${configuration.orientation} w=${configuration.screenWidthDp} h=${configuration.screenHeightDp} " +
+      "sw=${configuration.smallestScreenWidthDp} dens=${configuration.densityDpi} ui=${configuration.uiMode} disp=$displayId"
+  }
 
   private fun describeActivity(activity: Activity? = currentActivity): String {
     if (activity == null) {
@@ -157,6 +183,15 @@ class RnPosAndroidIntegrationModule : Module() {
       // payload contains requestCode, resultCode, data
       Diagnostics.note("2. onActivityResult req=${payload.requestCode} result=${payload.resultCode} posMode=${posMode.mode}")
       Diagnostics.note("2a. result on ${describeActivity(activity)} | launched from ${launchActivityKey ?: "unknown"}")
+      val resultConfig = describeConfig(activity)
+      if (launchConfigKey != null && resultConfig != launchConfigKey) {
+        Diagnostics.note("2d. CONFIG CHANGED! was ${launchConfigKey ?: "?"}")
+        Diagnostics.note("2e. CONFIG CHANGED! now $resultConfig")
+        Diagnostics.addVerdict("CFG-CHANGED")
+      } else {
+        Diagnostics.note("2d. cfg unchanged $resultConfig")
+        Diagnostics.addVerdict("cfgSame")
+      }
       Diagnostics.note(Diagnostics.describeIntent("2b. result intent", payload.data))
 
       if (payload.requestCode != SOFT_POS_REQUEST_CODE) {
@@ -247,6 +282,8 @@ class RnPosAndroidIntegrationModule : Module() {
         pendingStatus = null
 
         launchActivityKey = describeActivity(activity)
+        launchConfigKey = describeConfig(activity)
+        Diagnostics.note("1d. launch cfg ${launchConfigKey ?: "?"}")
         activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
         Diagnostics.note("1c. Launched SoftPOS from ${describeActivity(activity)}, callback req=$SOFT_POS_REQUEST_CODE")
       }
