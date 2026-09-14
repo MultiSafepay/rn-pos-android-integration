@@ -1,2 +1,19 @@
-<manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      Fully qualified on purpose: a relative name in a library manifest resolves against the
+      *application's* package when the manifests are merged, not against this module's.
+
+      singleTop and never a task root, mirroring PaymentActivity in the reference integration.
+      Translucent so the host stays visible behind it while SoftPOS is starting, and excluded
+      from recents because it is plumbing, not a screen.
+    -->
+    <activity
+      android:name="expo.modules.rnposandroidintegration.SoftPosProxyActivity"
+      android:exported="false"
+      android:launchMode="singleTop"
+      android:excludeFromRecents="true"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+  </application>
 </manifest>

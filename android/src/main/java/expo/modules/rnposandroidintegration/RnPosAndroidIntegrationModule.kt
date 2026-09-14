@@ -337,7 +337,9 @@ class RnPosAndroidIntegrationModule : Module() {
       Diagnostics.setForeground(false)
     }
 
-    // Handle activity results coming back to the host Activity.
+    // Kept for the case where a host is still on an older module and launched SoftPOS itself;
+    // with the proxy in place the SoftPOS result is delivered to SoftPosProxyActivity instead
+    // and this no longer fires for request code SOFT_POS_REQUEST_CODE.
     OnActivityResult { activity, payload ->
       // payload contains requestCode, resultCode, data
       Diagnostics.note("2. onActivityResult req=${payload.requestCode} result=${payload.resultCode} posMode=${posMode.mode}")
@@ -425,23 +427,22 @@ class RnPosAndroidIntegrationModule : Module() {
         intent.putExtra("amount", String.format(Locale.US, "%.2f", amount / 100.0))
         intent.putExtra("skip_manual_input", true)
 
-        // Debug only. The callback extras are what make SoftPOS bring the host app back the
-        // instant a transaction resolves, which makes it impossible to control how long the
-        // host sits in the background. Omitting them leaves the operator to return manually,
-        // so a long background can be tested against a short one with everything else equal.
-        // The result still arrives over startActivityForResult either way.
-        if (doNotReturn == true) {
-          Diagnostics.note("1b. doNotReturn: omitting callback extras, SoftPOS will not return automatically")
-        } else {
-          intent.putExtra("callback_activity", activityClass)
-          intent.putExtra("callback_package", appPackageName)
-        }
-
         launchActivityKey = describeActivity(activity)
         launchConfigKey = describeConfig(activity)
         Diagnostics.note("1d. launch cfg ${launchConfigKey ?: "?"}")
-        activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
-        Diagnostics.note("1c. Launched SoftPOS from ${describeActivity(activity)}, callback req=$SOFT_POS_REQUEST_CODE")
+
+        // SoftPOS is launched from SoftPosProxyActivity rather than from here, and the proxy
+        // is what SoftPOS is told to call back. The host's Activity -- `singleTask` and the
+        // task root in every Expo app -- is deliberately kept out of that path; handing it to
+        // SoftPOS as `callback_activity` is what left the host on a white screen after a
+        // cancelled or declined transaction. See SoftPosProxyActivity for the mechanism, and
+        // PaymentActivity/MainActivity in MultiSafepay/pos-android-integration for the
+        // topology this mirrors.
+        val proxy = Intent(activity, SoftPosProxyActivity::class.java)
+        proxy.putExtra(SoftPosProxyActivity.EXTRA_PAYMENT_INTENT, intent)
+        proxy.putExtra(SoftPosProxyActivity.EXTRA_DO_NOT_RETURN, doNotReturn == true)
+        activity.startActivity(proxy)
+        Diagnostics.note("1c. Started SoftPOS proxy from ${describeActivity(activity)} (class=$activityClass)")
       }
     }
 
