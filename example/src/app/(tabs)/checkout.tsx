@@ -67,9 +67,17 @@ export default function Checkout() {
       // about whether JS ran, navigated, or rendered. These three acks split that gap.
       RnPosAndroidIntegration.ackDiagnostics(`listener ${status}`);
 
-      router.push({ pathname: '/(modals)/confirmation', params: { status: paymentStatus } });
-
-      RnPosAndroidIntegration.ackDiagnostics(`pushed ${paymentStatus}`);
+      // The previous run proved the listener runs and the push never returns, so the push
+      // throws. In a release build that error is invisible -- no RedBox, just a blank screen.
+      // Catch it purely to get its text onto the screen.
+      try {
+        router.push({ pathname: '/(modals)/confirmation', params: { status: paymentStatus } });
+        RnPosAndroidIntegration.ackDiagnostics(`pushed ${paymentStatus}`);
+      } catch (error) {
+        const detail = `${(error as Error)?.name ?? 'Error'}: ${(error as Error)?.message ?? String(error)}`;
+        RnPosAndroidIntegration.ackDiagnostics(`push THREW ${detail}`.slice(0, 180));
+        throw error;
+      }
     });
     return () => subscription.remove();
   }, [router]);
