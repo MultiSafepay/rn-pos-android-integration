@@ -1,7 +1,10 @@
 package expo.modules.rnposandroidintegration
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
@@ -26,6 +29,36 @@ class RnPosAndroidIntegrationModule : Module() {
   // React host is actually resumed and emit it there.
   private var hostIsForeground = false
   private var pendingStatus: TransactionStatus? = null
+
+  // Which Activity instance launched the payment, so the result can say whether it came
+  // back to the same one. A different instance means the React surface JS is rendering
+  // into is not the one on screen.
+  private var launchActivityKey: String? = null
+
+  private fun describeActivity(activity: Activity? = currentActivity): String {
+    if (activity == null) {
+      return "act=none"
+    }
+    return "act=${Integer.toHexString(System.identityHashCode(activity))} task=${activity.taskId} fin=${activity.isFinishing}"
+  }
+
+  /**
+   * Runs after the host Activity's view hierarchy has been through a draw pass.
+   *
+   * Resuming is not the same as being ready to draw. OnActivityEntersForeground fires at the
+   * start of the resume, before the React surface has re-attached, so a status emitted there
+   * lands on a tree that is not on screen -- the blank screen the deferral above exists to
+   * prevent, just moved later. A post on the decor view runs once layout and draw have
+   * happened, which is the point the surface is actually up.
+   */
+  private fun afterNextDraw(block: () -> Unit) {
+    val decorView = currentActivity?.window?.decorView
+    if (decorView != null) {
+      decorView.post { block() }
+    } else {
+      Handler(Looper.getMainLooper()).post { block() }
+    }
+  }
 
   @SuppressLint("NewApi")
   private fun buildLaunchIntent(mode: PosMode): Intent? {
@@ -98,10 +131,15 @@ class RnPosAndroidIntegrationModule : Module() {
 
       pendingStatus?.let {
         pendingStatus = null
-        Diagnostics.note("5. Host resumed; flushing deferred $it")
+        Diagnostics.note("5. Host resumed; deferring flush of $it to the next draw")
         Diagnostics.beginVerdict("V flush $it")
-        emit(it)
-        Diagnostics.showVerdict()
+        Diagnostics.addVerdict(describeActivity())
+        Diagnostics.addVerdict(if (describeActivity() == launchActivityKey) "sameAct" else "DIFFERENT-ACT")
+        afterNextDraw {
+          Diagnostics.note("5b. Surface drawn; emitting $it now")
+          emit(it)
+          Diagnostics.showVerdict()
+        }
       }
 
       // A status that landed while this module was being rebuilt is held by the Notifier,
@@ -118,6 +156,7 @@ class RnPosAndroidIntegrationModule : Module() {
     OnActivityResult { activity, payload ->
       // payload contains requestCode, resultCode, data
       Diagnostics.note("2. onActivityResult req=${payload.requestCode} result=${payload.resultCode} posMode=${posMode.mode}")
+      Diagnostics.note("2a. result on ${describeActivity(activity)} | launched from ${launchActivityKey ?: "unknown"}")
       Diagnostics.note(Diagnostics.describeIntent("2b. result intent", payload.data))
 
       if (payload.requestCode != SOFT_POS_REQUEST_CODE) {
@@ -197,8 +236,9 @@ class RnPosAndroidIntegrationModule : Module() {
         // transaction and must not surface as the result of this one.
         pendingStatus = null
 
+        launchActivityKey = describeActivity(activity)
         activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
-        Diagnostics.note("1c. Launched SoftPOS from ${activityClass.substringAfterLast('.')}, callback req=$SOFT_POS_REQUEST_CODE")
+        Diagnostics.note("1c. Launched SoftPOS from ${describeActivity(activity)}, callback req=$SOFT_POS_REQUEST_CODE")
       }
     }
 
