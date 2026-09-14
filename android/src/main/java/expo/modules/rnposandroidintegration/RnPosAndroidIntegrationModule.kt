@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.View
 import android.view.ViewGroup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -29,7 +30,16 @@ private const val SURFACE_PROBE_DELAY_MS = 1_500L
 
 class RnPosAndroidIntegrationModule : Module() {
   private val context get() = requireNotNull(appContext.reactContext)
-  private val currentActivity get() = appContext.activityProvider?.currentActivity
+  // `appContext` throws once the AppContext has been released, and every caller here runs at
+  // moments when that can already have happened -- a delayed probe, a lifecycle callback after
+  // a teardown. A null is a fact those callers can report; an exception kills whatever posted
+  // them, and on the main looper that is the app.
+  private val currentActivity: Activity?
+    get() = try {
+      appContext.activityProvider?.currentActivity
+    } catch (error: Throwable) {
+      null
+    }
   private val appPackageName get() = context.packageName
 
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -91,7 +101,7 @@ class RnPosAndroidIntegrationModule : Module() {
   private fun describeSurface(activity: Activity? = currentActivity): String {
     val content = try {
       activity?.findViewById<ViewGroup>(android.R.id.content)
-    } catch (error: RuntimeException) {
+    } catch (error: Throwable) {
       return "surface=unreadable:${error.javaClass.simpleName}"
     } ?: return "surface=none"
 
@@ -104,6 +114,39 @@ class RnPosAndroidIntegrationModule : Module() {
     }
 
     return "content=${content.width}x${content.height} kids=${content.childCount} $rootDesc"
+  }
+
+  /**
+   * The first-child chain below the React root, with alpha.
+   *
+   * The root probe showed a healthy, visible, correctly sized surface on a run that renders
+   * white, so the tree is either not there or not painting. Those look identical from the
+   * root and need opposite fixes: a chain that stops immediately is a commit/layout failure,
+   * while a chain of full-size views whose alpha is 0 is an entering animation that never
+   * ran -- the app mounts everything and paints none of it.
+   */
+  private fun describeTree(root: View?, maxDepth: Int = 5): String {
+    if (root == null) {
+      return "tree=<none>"
+    }
+
+    return try {
+      val parts = mutableListOf<String>()
+      var node: View? = root
+      var depth = 0
+      while (node != null && depth <= maxDepth) {
+        val group = node as? ViewGroup
+        parts.add(
+          "$depth:${node.javaClass.simpleName} ${node.width}x${node.height} " +
+            "v=${node.visibility} a=${"%.2f".format(node.alpha)} k=${group?.childCount ?: 0}"
+        )
+        node = if (group != null && group.childCount > 0) group.getChildAt(0) else null
+        depth++
+      }
+      parts.joinToString(" > ")
+    } catch (error: Throwable) {
+      "tree=unreadable:${error.javaClass.simpleName}"
+    }
   }
 
   private fun describeActivity(activity: Activity? = currentActivity): String {
@@ -122,7 +165,32 @@ class RnPosAndroidIntegrationModule : Module() {
    * and unlike a lifecycle flag it cannot be withheld -- the runnable always executes.
    */
   private fun postToMain(block: () -> Unit) {
-    mainHandler.post { block() }
+    mainHandler.post { runGuarded("post", block) }
+  }
+
+  private fun postToMainDelayed(delayMs: Long, block: () -> Unit) {
+    mainHandler.postDelayed({ runGuarded("delayed post", block) }, delayMs)
+  }
+
+  /**
+   * Runs work that has no caller left to catch it.
+   *
+   * A Runnable on the main looper is the end of its own stack: anything it throws is an
+   * uncaught exception on the UI thread, which is a crash. Diagnostics in particular must
+   * never be able to do that -- an instrument that can kill the thing it is measuring is
+   * worse than no instrument.
+   */
+  private fun runGuarded(what: String, block: () -> Unit) {
+    try {
+      block()
+    } catch (error: Throwable) {
+      Log.e("pos-app-integration", "Swallowed a throw from a $what", error)
+      try {
+        Diagnostics.note("!! $what threw ${error.javaClass.simpleName}: ${error.message}")
+      } catch (ignored: Throwable) {
+        // Reporting the failure must not fail louder than the failure.
+      }
+    }
   }
 
   /**
@@ -154,7 +222,7 @@ class RnPosAndroidIntegrationModule : Module() {
     val ready = isHostResumed()
 
     if (!ready && waitedMs < DELIVERY_TIMEOUT_MS) {
-      mainHandler.postDelayed({ deliverWhenReady(status, waitedMs + DELIVERY_POLL_MS) }, DELIVERY_POLL_MS)
+      postToMainDelayed(DELIVERY_POLL_MS) { deliverWhenReady(status, waitedMs + DELIVERY_POLL_MS) }
       return
     }
 
@@ -176,11 +244,23 @@ class RnPosAndroidIntegrationModule : Module() {
 
     // Once JS has had time to navigate and draw. A root that is healthy here while the
     // screen is white moves the question off this module entirely.
-    mainHandler.postDelayed({
+    postToMainDelayed(SURFACE_PROBE_DELAY_MS) {
       val surface = describeSurface()
       Diagnostics.note("7. surface after render: $surface")
-      Diagnostics.addVerdict("surf:$surface")
-    }, SURFACE_PROBE_DELAY_MS)
+
+      val content = try {
+        currentActivity?.findViewById<ViewGroup>(android.R.id.content)
+      } catch (error: Throwable) {
+        null
+      }
+      val tree = describeTree(if ((content?.childCount ?: 0) > 0) content?.getChildAt(0) else null)
+      Diagnostics.note("7b. tree: $tree")
+
+      // Only the alphas go on the verdict: it is the one line guaranteed to survive, and
+      // whether anything is painting is the single fact this probe exists to establish.
+      val alphas = Regex("a=([0-9.]+)").findAll(tree).map { it.groupValues[1] }.joinToString(",")
+      Diagnostics.addVerdict("alpha:$alphas")
+    }
 
     Diagnostics.showVerdict()
   }
