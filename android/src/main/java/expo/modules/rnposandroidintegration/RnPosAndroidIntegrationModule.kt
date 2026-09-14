@@ -187,7 +187,7 @@ class RnPosAndroidIntegrationModule : Module() {
       promise.resolve(resolveLaunchIntent() != null)
     }
 
-    Function("initiatePayment") { currency: String, amount: Long, serializedItems: String, orderId: String, description: String, sessionId: String?, debug: Boolean? ->
+    Function("initiatePayment") { currency: String, amount: Long, serializedItems: String, orderId: String, description: String, sessionId: String?, debug: Boolean?, doNotReturn: Boolean? ->
       // Tracing is armed here rather than by its own call so it is impossible to launch a
       // traced payment and miss the callbacks: everything we need to see happens after
       // this point.
@@ -229,8 +229,18 @@ class RnPosAndroidIntegrationModule : Module() {
         intent.setClassName("com.phonepos.mspsoftposapp", "com.phonepos.mspsoftposapp.ManualPayInputActivity")
         intent.putExtra("amount", String.format(Locale.US, "%.2f", amount / 100.0))
         intent.putExtra("skip_manual_input", true)
-        intent.putExtra("callback_activity", activityClass)
-        intent.putExtra("callback_package", appPackageName)
+
+        // Debug only. The callback extras are what make SoftPOS bring the host app back the
+        // instant a transaction resolves, which makes it impossible to control how long the
+        // host sits in the background. Omitting them leaves the operator to return manually,
+        // so a long background can be tested against a short one with everything else equal.
+        // The result still arrives over startActivityForResult either way.
+        if (doNotReturn == true) {
+          Diagnostics.note("1b. doNotReturn: omitting callback extras, SoftPOS will not return automatically")
+        } else {
+          intent.putExtra("callback_activity", activityClass)
+          intent.putExtra("callback_package", appPackageName)
+        }
 
         // Drop any status still waiting to be flushed; it belongs to a previous
         // transaction and must not surface as the result of this one.

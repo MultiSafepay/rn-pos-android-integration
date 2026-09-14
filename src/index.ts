@@ -33,6 +33,12 @@ interface InitiateManualPaymentRequest {
    * it puts transaction details on a customer-facing screen.
    */
   debug?: boolean;
+  /**
+   * Debug only. Launches SoftPOS without the callback extras, so it does not bring the host
+   * app back automatically when the transaction resolves. Lets a tester control how long the
+   * host stays backgrounded. The result still arrives through onActivityResult.
+   */
+  doNotReturn?: boolean;
 }
 
 interface InitiateRemotePaymentRequest extends InitiateManualPaymentRequest {
@@ -43,7 +49,7 @@ interface InitiatePaymentRequest extends InitiateManualPaymentRequest {
   sessionId?: string;
 }
 
-const initiatePayment = ({ items, amount, orderId, description, sessionId, debug }: InitiatePaymentRequest) => {
+const initiatePayment = ({ items, amount, orderId, description, sessionId, debug, doNotReturn }: InitiatePaymentRequest) => {
   if (Platform.OS === 'android') {
     const validItems = items.map((item) => {
       return {
@@ -61,7 +67,8 @@ const initiatePayment = ({ items, amount, orderId, description, sessionId, debug
       orderId,
       description,
       sessionId,
-      debug ?? false
+      debug ?? false,
+      doNotReturn ?? false
     );
   }
 };
@@ -72,8 +79,9 @@ export function initiateManualPayment({
   orderId,
   description,
   debug,
+  doNotReturn,
 }: InitiateManualPaymentRequest): void {
-  initiatePayment({ amount, items, orderId, description, debug });
+  initiatePayment({ amount, items, orderId, description, debug, doNotReturn });
 }
 
 export function initiateRemotePayment({
@@ -83,8 +91,9 @@ export function initiateRemotePayment({
   description,
   sessionId,
   debug,
+  doNotReturn,
 }: InitiateRemotePaymentRequest): void {
-  initiatePayment({ amount, items, orderId, description, sessionId, debug });
+  initiatePayment({ amount, items, orderId, description, sessionId, debug, doNotReturn });
 }
 
 /**

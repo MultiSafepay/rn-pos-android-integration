@@ -11,7 +11,8 @@ declare class RnPosAndroidIntegrationModule extends NativeModule {
     orderId: string,
     description: string,
     sessionId?: string,
-    debug?: boolean
+    debug?: boolean,
+    doNotReturn?: boolean
   ): void;
   setPosMode(mode: PosMode): void;
   ackDiagnostics(stage: string): void;
