@@ -78,26 +78,44 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     // Only `result_status` is read here. A declined transaction also carries the
     // decline code in `status`, and consulting that first sent the result down the
     // middleware branch, where the code matched nothing and the callback was dropped.
-    val status = when (resultStatus.uppercase(Locale.ROOT)) {
+    //
+    // Every branch says which one it took. A mapping that silently picks the wrong arm --
+    // an unexpected casing, a trailing space, a value the contract does not list -- looks
+    // from the outside exactly like a status that was mapped correctly and lost later, and
+    // those have nothing in common as far as a fix goes.
+    val normalised = resultStatus.uppercase(Locale.ROOT)
+    val status = when (normalised) {
       // A success is trusted only when the result code agrees. COMPLETED on a non-OK
       // result is self-contradictory, and marking an unpaid order paid is the
       // expensive way to be wrong.
       "COMPLETED" ->
         if (resultCode == Activity.RESULT_OK) {
+          Diagnostics.note("3d. matched COMPLETED, resultCode=$resultCode is RESULT_OK")
           TransactionStatus.COMPLETED
         } else {
+          Diagnostics.note("3d. matched COMPLETED but resultCode=$resultCode is not RESULT_OK; reporting UNDEFINED")
           Log.w(TAG, "SoftPOS reported COMPLETED with resultCode=$resultCode; reporting UNDEFINED")
           TransactionStatus.UNDEFINED
         }
-      "CANCELLED" -> TransactionStatus.CANCELLED
-      "DECLINED" -> TransactionStatus.DECLINED
+      "CANCELLED" -> {
+        Diagnostics.note("3d. matched CANCELLED")
+        TransactionStatus.CANCELLED
+      }
+      "DECLINED" -> {
+        Diagnostics.note("3d. matched DECLINED")
+        TransactionStatus.DECLINED
+      }
       else -> {
+        // Quoted and length-tagged: whitespace and invisible characters are the usual
+        // reason a value that reads correctly on screen does not match.
+        Diagnostics.note("3d. NO BRANCH matched '$normalised' (len=${normalised.length}); reporting UNDEFINED")
         Log.w(TAG, "Unknown SoftPOS result_status '$resultStatus'; reporting UNDEFINED")
         TransactionStatus.UNDEFINED
       }
     }
 
-    this.receivedCallbackIntent(status)
+    Diagnostics.note("3e. resolved '$resultStatus' + rc=$resultCode -> $status")
+    this.receivedCallbackIntent(status, "rs='$normalised' rc=$resultCode")
   }
 
   private fun safeHasExtra(intent: Intent, key: String): Boolean {
@@ -159,10 +177,12 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
     }
   }
 
-  private fun receivedCallbackIntent(status: TransactionStatus) {
+  private fun receivedCallbackIntent(status: TransactionStatus, detail: String? = null) {
     // Opens the verdict: every hop from here on adds to one line that is shown after the
     // toast burst has drained, because the tail of the play-by-play is what gets dropped.
+    // `detail` puts the mapping that produced this status on that same surviving line.
     Diagnostics.beginVerdict("V $status")
+    detail?.let { Diagnostics.addVerdict(it) }
     Diagnostics.note("4. Reporting $status to Notifier")
     Notifier.onTransactionStatusChanged(status)
   }

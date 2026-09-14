@@ -101,15 +101,25 @@ object Diagnostics {
     synchronized(verdictParts) { verdictParts.add(part) }
   }
 
-  /** Emits the accumulated verdict as one line, after the burst and twice over. */
+  private fun renderVerdict(): String = synchronized(verdictParts) { verdictParts.joinToString(" | ") }
+
+  /**
+   * Emits the accumulated verdict as one line, after the burst and twice over.
+   *
+   * Each copy is rendered when it is shown rather than when this is called, so a part added
+   * in between -- a JS acknowledgement, which by definition arrives after the status was
+   * emitted -- still makes the later copy. That matters because the verdict is the only
+   * message engineered to survive the burst: an unnumbered toast that Android drops is
+   * indistinguishable from a step that never ran, and reading one as the other is what sent
+   * the last diagnosis down the wrong path.
+   */
   fun showVerdict() {
-    val text = synchronized(verdictParts) { verdictParts.joinToString(" | ") }
-    Log.d(TAG, "VERDICT $text")
+    Log.d(TAG, "VERDICT ${renderVerdict()}")
     if (!enabled) {
       return
     }
-    main.postDelayed({ show("VERDICT $text") }, 3000)
-    main.postDelayed({ show("VERDICT $text") }, 9000)
+    main.postDelayed({ show("VERDICT ${renderVerdict()}") }, 3000)
+    main.postDelayed({ show("VERDICT ${renderVerdict()}") }, 9000)
   }
 
   /**

@@ -335,6 +335,9 @@ class RnPosAndroidIntegrationModule : Module() {
     // the screen, and those need opposite fixes.
     Function("ackDiagnostics") { stage: String ->
       Diagnostics.late("JS ACK $stage")
+      // Also onto the verdict line. A `late` toast is unnumbered, so Android dropping one
+      // reads as a step that never ran -- the verdict is the copy that survives the burst.
+      Diagnostics.addVerdict("ack:$stage")
     }
 
     AsyncFunction("setValueAsync") { value: String ->
