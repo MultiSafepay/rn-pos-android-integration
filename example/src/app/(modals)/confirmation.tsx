@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ComponentProps, FC } from 'react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Text } from 'react-native';
+import * as RnPosAndroidIntegration from 'rn-pos-android-integration';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -69,6 +70,12 @@ const ConfirmationModal: FC = () => {
     if (variant === 'error') return `The order failed with reason: ${paymentStatusValue}`;
     return detail.description;
   }, [detail.description, message, paymentStatusValue, variant]);
+
+  // Diagnostic only: proves the screen mounted, as opposed to being navigated to and
+  // rendering nothing.
+  useEffect(() => {
+    RnPosAndroidIntegration.ackDiagnostics(`mounted ${paymentStatusValue}`);
+  }, [paymentStatusValue]);
 
   const onClose = useCallback(() => {
     if (paymentStatusValue === 'completed') {

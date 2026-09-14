@@ -63,7 +63,13 @@ export default function Checkout() {
         console.log('🚀 Did receive transaction callback', { status, paymentStatus });
       }
 
+      // Diagnostic only. Native sees `SENT` as soon as sendEvent returns, which says nothing
+      // about whether JS ran, navigated, or rendered. These three acks split that gap.
+      RnPosAndroidIntegration.ackDiagnostics(`listener ${status}`);
+
       router.push({ pathname: '/(modals)/confirmation', params: { status: paymentStatus } });
+
+      RnPosAndroidIntegration.ackDiagnostics(`pushed ${paymentStatus}`);
     });
     return () => subscription.remove();
   }, [router]);

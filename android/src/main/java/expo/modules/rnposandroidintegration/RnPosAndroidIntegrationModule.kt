@@ -6,6 +6,8 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -14,10 +16,18 @@ import java.util.Locale
 const val TRANSACTION_CHANGED_EVENT_NAME = "onTransactionChanged"
 internal const val SOFT_POS_REQUEST_CODE = 6017
 
+// How long a status may wait for the host to resume before it is emitted regardless, and how
+// often the host is checked while waiting. The cap matters more than the interval: it is the
+// guarantee that no status is ever held indefinitely.
+private const val DELIVERY_TIMEOUT_MS = 5_000L
+private const val DELIVERY_POLL_MS = 100L
+
 class RnPosAndroidIntegrationModule : Module() {
   private val context get() = requireNotNull(appContext.reactContext)
   private val currentActivity get() = appContext.activityProvider?.currentActivity
   private val appPackageName get() = context.packageName
+
+  private val mainHandler = Handler(Looper.getMainLooper())
 
   private var posMode: PosMode = PosMode.SUNMI
   private val lifecycleListener = RnPosAndroidReactActivityLifecycleListener()
@@ -80,7 +90,58 @@ class RnPosAndroidIntegrationModule : Module() {
    * and unlike a lifecycle flag it cannot be withheld -- the runnable always executes.
    */
   private fun postToMain(block: () -> Unit) {
-    Handler(Looper.getMainLooper()).post { block() }
+    mainHandler.post { block() }
+  }
+
+  /**
+   * Whether the host Activity is genuinely resumed, asked of the Activity itself.
+   *
+   * Deliberately not a flag maintained from OnActivityEntersForeground/Background: those two
+   * events are not symmetric (see the note on the delivery policy above), so a cached boolean
+   * can disagree with reality and stay that way. The lifecycle registry cannot.
+   */
+  private fun isHostResumed(): Boolean {
+    val activity = currentActivity ?: return false
+    if (activity.isFinishing || activity.isDestroyed) {
+      return false
+    }
+    val owner = activity as? LifecycleOwner ?: return false
+    return owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+  }
+
+  /**
+   * Emits as soon as the host is resumed, and emits anyway once [DELIVERY_TIMEOUT_MS] has passed.
+   *
+   * Both failure modes this has been through are covered. Emitting into a host that is not yet
+   * resumed lands the navigation on a surface that is not on screen, which renders blank.
+   * Waiting for an event that may never arrive never delivers at all, which hangs. Polling the
+   * real state with a deadline can do neither: the common case emits on the first turn, and the
+   * worst case is a late status, which is always better than no status.
+   */
+  private fun deliverWhenReady(status: TransactionStatus, waitedMs: Long = 0) {
+    val ready = isHostResumed()
+
+    if (!ready && waitedMs < DELIVERY_TIMEOUT_MS) {
+      mainHandler.postDelayed({ deliverWhenReady(status, waitedMs + DELIVERY_POLL_MS) }, DELIVERY_POLL_MS)
+      return
+    }
+
+    if (!ready) {
+      Diagnostics.note("5b. Host still not resumed after ${waitedMs}ms; emitting $status anyway")
+      Diagnostics.addVerdict("FORCED@${waitedMs}ms")
+    } else if (waitedMs > 0) {
+      Diagnostics.addVerdict("waited=${waitedMs}ms")
+    }
+
+    try {
+      emit(status)
+    } catch (error: Throwable) {
+      // Runs long after Notifier.dispatch returned, so nothing upstream is catching and an
+      // escape here would take down the main thread. Park it for the next module instance.
+      Diagnostics.note("6. Delivery threw; parking $status")
+      Notifier.park(status)
+    }
+    Diagnostics.showVerdict()
   }
 
   @SuppressLint("NewApi")
@@ -128,20 +189,8 @@ class RnPosAndroidIntegrationModule : Module() {
       appContext.reactContext?.let { Diagnostics.attach(it) }
 
       observer = { status ->
-        // Unconditional. Whatever the host's lifecycle is doing, the status goes to JS on the
-        // next main-loop turn; there is no state in which it can be held back.
-        postToMain {
-          try {
-            emit(status)
-          } catch (error: Throwable) {
-            // This runs a loop turn after Notifier.dispatch returned, so nothing upstream is
-            // catching any more and an escape here would take down the main thread. sendEvent
-            // fails when the AppContext went away in between; park the status so the next
-            // module instance delivers it instead of losing it.
-            Notifier.park(status)
-          }
-          Diagnostics.showVerdict()
-        }
+        // Off the synchronous onActivityResult stack, then delivered on a deadline.
+        postToMain { deliverWhenReady(status) }
       }
       Notifier.registerObserver(observer)
       Diagnostics.note("Module created; observer registered (posMode=${posMode.mode})")
