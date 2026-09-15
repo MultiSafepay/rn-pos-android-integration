@@ -29,6 +29,10 @@ class SoftPosProxyActivity : Activity() {
 
   private val lifecycleListener = RnPosAndroidReactActivityLifecycleListener()
 
+  private var launched = false
+  private var hasBeenPaused = false
+  private var resultReceived = false
+
   companion object {
     const val EXTRA_PAYMENT_INTENT = "msp_payment_intent"
     const val EXTRA_DO_NOT_RETURN = "msp_do_not_return"
@@ -55,7 +59,7 @@ class SoftPosProxyActivity : Activity() {
 
     if (payment == null) {
       Diagnostics.note("1e. ABORT: proxy started without a payment intent")
-      finish()
+      dismiss()
       return
     }
 
@@ -63,12 +67,20 @@ class SoftPosProxyActivity : Activity() {
       Diagnostics.note("1e. doNotReturn: omitting callback extras, SoftPOS will not return automatically")
     } else {
       // The callback target is this Activity, never the host's. That is the whole point.
+      //
+      // `callback_package` is deliberately not sent. With both extras SoftPOS returns twice:
+      // once automatically, because startActivityForResult resumes whoever launched it, and
+      // once explicitly, because the extras ask it to go and start that screen itself. The
+      // second return is what briefly puts the SoftPOS result screen back on top of the host
+      // after the host has already resumed. The reference integration sets only
+      // `callback_activity` on this flow (PaymentActivity#putSoftPosCompatExtras); it sets
+      // both only on the recurring flow, which does not launch for a result.
       payment.putExtra("callback_activity", this.javaClass.name)
-      payment.putExtra("callback_package", packageName)
     }
 
     try {
       startActivityForResult(payment, SOFT_POS_REQUEST_CODE)
+      launched = true
       Diagnostics.note("1c. Launched SoftPOS from proxy task=$taskId, callback req=$SOFT_POS_REQUEST_CODE")
     } catch (error: Throwable) {
       // A missing or unresolvable SoftPOS would otherwise strand the caller on a screen that
@@ -76,7 +88,7 @@ class SoftPosProxyActivity : Activity() {
       Log.e("pos-app-integration", "Unable to launch SoftPOS from the proxy", error)
       Diagnostics.note("1e. ABORT: could not launch SoftPOS (${error.javaClass.simpleName})")
       Notifier.onTransactionStatusChanged(TransactionStatus.EXCEPTION)
-      finish()
+      dismiss()
     }
   }
 
@@ -87,11 +99,51 @@ class SoftPosProxyActivity : Activity() {
       return
     }
 
+    resultReceived = true
+
     // Same parsing as before -- only the Activity it runs on has changed.
     lifecycleListener.handleActivityResult(this, requestCode, resultCode, data)
 
     // Finishing hands the screen back to the host. The module holds the status until the host
     // is resumed again, so the order here does not race the delivery.
+    dismiss()
+  }
+
+  override fun onPause() {
+    super.onPause()
+    // Reached only once SoftPOS is actually covering this Activity, which is what makes a
+    // later onResume meaningful.
+    hasBeenPaused = true
+  }
+
+  override fun onResume() {
+    super.onResume()
+
+    // Being resumed after SoftPOS covered us, with no result, means SoftPOS went away without
+    // answering -- it crashed, it was force-stopped, or it took an exit we have not seen.
+    //
+    // This Activity draws nothing and is translucent, so staying here leaves the host visible
+    // but paused: an app that looks present and ignores every touch. Before this proxy existed
+    // that same failure simply returned the operator to a live app, and it must not be worse
+    // now. Report a terminal status so the pay screen resolves, and get out of the way.
+    if (launched && hasBeenPaused && !resultReceived) {
+      Diagnostics.note("3z. SoftPOS returned with no result; reporting CANCELLED so the host is not stranded")
+      resultReceived = true
+      Notifier.onTransactionStatusChanged(TransactionStatus.CANCELLED)
+      dismiss()
+    }
+  }
+
+  /**
+   * Leaves without an animation of its own.
+   *
+   * This Activity is plumbing; it should cost the flow nothing visible. Android would
+   * otherwise animate it away as a real screen, adding a transition between SoftPOS and the
+   * host that the integration did not have before the proxy existed.
+   */
+  @Suppress("DEPRECATION")
+  private fun dismiss() {
     finish()
+    overridePendingTransition(0, 0)
   }
 }

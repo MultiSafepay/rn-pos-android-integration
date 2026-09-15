@@ -439,6 +439,9 @@ class RnPosAndroidIntegrationModule : Module() {
         // PaymentActivity/MainActivity in MultiSafepay/pos-android-integration for the
         // topology this mirrors.
         val proxy = Intent(activity, SoftPosProxyActivity::class.java)
+        // No animation of its own: the operator should see one transition into SoftPOS, the
+        // same as before this Activity existed, not one into the proxy and another out of it.
+        proxy.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         proxy.putExtra(SoftPosProxyActivity.EXTRA_PAYMENT_INTENT, intent)
         proxy.putExtra(SoftPosProxyActivity.EXTRA_DO_NOT_RETURN, doNotReturn == true)
         activity.startActivity(proxy)
