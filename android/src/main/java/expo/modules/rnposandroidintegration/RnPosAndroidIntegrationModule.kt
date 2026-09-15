@@ -286,6 +286,21 @@ class RnPosAndroidIntegrationModule : Module() {
     }
   }
 
+  /**
+   * Reports a launch that never happened.
+   *
+   * Every initiatePayment must produce exactly one terminal status. Returning silently leaves
+   * the caller waiting on a transaction that was never started, and a host has no other way to
+   * find out -- it cannot see a launch intent that failed to resolve or a missing Activity.
+   * A pay screen that only moves when a status arrives would sit there forever.
+   */
+  private fun reportLaunchFailure(reason: String) {
+    Diagnostics.beginVerdict("V EXCEPTION")
+    Diagnostics.addVerdict("launch-failed:$reason")
+    Log.w("pos-app-integration", "Payment could not be launched: $reason")
+    Notifier.onTransactionStatusChanged(TransactionStatus.EXCEPTION)
+  }
+
   private fun emit(status: TransactionStatus) {
     val value: Map<String, String> = mapOf("status" to status.toString())
     try {
@@ -398,6 +413,7 @@ class RnPosAndroidIntegrationModule : Module() {
 
       if (intent == null) {
         Diagnostics.note("1b. ABORT: no launch intent for mode ${posMode.mode}")
+        reportLaunchFailure("no launch intent for ${posMode.mode}")
         return@Function
       }
 
@@ -414,13 +430,21 @@ class RnPosAndroidIntegrationModule : Module() {
       if (posMode == PosMode.SUNMI) {
         intent.setClassName("com.multisafepay.pos.sunmi", "com.multisafepay.pos.middleware.IntentActivity")
         intent.putExtra("amount", amount)
-        context.startActivity(intent)
-        Diagnostics.note("1c. Launched Sunmi Pay App")
+        try {
+          context.startActivity(intent)
+          Diagnostics.note("1c. Launched Sunmi Pay App")
+        } catch (error: Throwable) {
+          // Reported rather than rethrown, so a failed launch reaches the host the same way a
+          // failed transaction does: one terminal status, one place to handle it.
+          Diagnostics.note("1b. ABORT: could not launch the Pay App (${error.javaClass.simpleName})")
+          reportLaunchFailure(error.javaClass.simpleName)
+        }
       } else {
         val activity = currentActivity
         val activityClass = activity?.componentName?.className
         if (activity == null || activityClass == null) {
           Diagnostics.note("1b. ABORT: SoftPOS needs a foreground activity, none available")
+          reportLaunchFailure("no foreground activity")
           return@Function
         }
         intent.setClassName("com.phonepos.mspsoftposapp", "com.phonepos.mspsoftposapp.ManualPayInputActivity")
@@ -452,8 +476,13 @@ class RnPosAndroidIntegrationModule : Module() {
         launchActivityKey = describeActivity(activity)
         launchConfigKey = describeConfig(activity)
         Diagnostics.note("1d. launch cfg ${launchConfigKey ?: "?"}")
-        activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
-        Diagnostics.note("1c. Launched SoftPOS from ${describeActivity(activity)}, callback=SoftPosProxyActivity req=$SOFT_POS_REQUEST_CODE")
+        try {
+          activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
+          Diagnostics.note("1c. Launched SoftPOS from ${describeActivity(activity)}, callback=SoftPosProxyActivity req=$SOFT_POS_REQUEST_CODE")
+        } catch (error: Throwable) {
+          Diagnostics.note("1b. ABORT: could not launch SoftPOS (${error.javaClass.simpleName})")
+          reportLaunchFailure(error.javaClass.simpleName)
+        }
       }
     }
 

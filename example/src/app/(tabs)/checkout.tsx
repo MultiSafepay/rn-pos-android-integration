@@ -31,13 +31,19 @@ export default function Checkout() {
     try {
       setInProgress(true);
       await payOrder({ cartItems: items });
+      // Deliberately not cleared here. payOrder resolves once the payment app has been
+      // launched, not once the customer has paid, so clearing it at this point put the button
+      // back to "Charge" while the transaction was still on screen in the other app -- and
+      // left it tappable the moment the operator returned. The module reports exactly one
+      // terminal status per initiatePayment, including for a launch that failed, so the
+      // listener below is what ends the in-progress state.
     } catch (error) {
+      // A throw here means the order never reached the payment app, so no status is coming.
+      setInProgress(false);
       if (__DEV__) {
         console.error(error);
       }
       Alert.alert('Error', (error as Error)?.message);
-    } finally {
-      setInProgress(false);
     }
   }, [items]);
 
@@ -65,6 +71,8 @@ export default function Checkout() {
 
       // Diagnostic only. Native sees `SENT` as soon as sendEvent returns, which says nothing
       // about whether JS ran, navigated, or rendered. These three acks split that gap.
+      setInProgress(false);
+
       RnPosAndroidIntegration.ackDiagnostics(`listener ${status}`);
 
       // The previous run proved the listener runs and the push never returns, so the push
