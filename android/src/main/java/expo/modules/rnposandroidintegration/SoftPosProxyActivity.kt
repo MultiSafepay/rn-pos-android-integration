@@ -29,15 +29,28 @@ class SoftPosProxyActivity : Activity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    Diagnostics.note("3y. SoftPOS callback landed on the proxy; returning to the host")
+    reportHit("onCreate")
     dismiss()
   }
 
   override fun onNewIntent(intent: Intent?) {
     super.onNewIntent(intent)
     // Already alive and on top, so SoftPOS's callback arrives here instead of onCreate.
-    Diagnostics.note("3y. SoftPOS callback landed on the live proxy; returning to the host")
+    reportHit("onNewIntent")
     dismiss()
+  }
+
+  /**
+   * Records that SoftPOS actually used the callback address, on the one line that survives.
+   *
+   * A `note` is a toast among many and Android drops the tail of a burst, so its absence is
+   * not evidence that this Activity was never reached. The verdict is coalesced and shown
+   * late and twice, so "no proxy-hit on the verdict" does mean SoftPOS never came here --
+   * which is the difference between this Activity being load-bearing and being dead weight.
+   */
+  private fun reportHit(via: String) {
+    Diagnostics.note("3y. SoftPOS callback landed on the proxy via $via; returning to the host")
+    Diagnostics.addVerdict("proxy-hit:$via")
   }
 
   /**
