@@ -337,9 +337,9 @@ class RnPosAndroidIntegrationModule : Module() {
       Diagnostics.setForeground(false)
     }
 
-    // Kept for the case where a host is still on an older module and launched SoftPOS itself;
-    // with the proxy in place the SoftPOS result is delivered to SoftPosProxyActivity instead
-    // and this no longer fires for request code SOFT_POS_REQUEST_CODE.
+    // Handle activity results coming back to the host Activity. SoftPOS is launched from
+    // there, so this is where its result lands; the proxy only absorbs the separate callback
+    // launch and never sees a result.
     OnActivityResult { activity, payload ->
       // payload contains requestCode, resultCode, data
       Diagnostics.note("2. onActivityResult req=${payload.requestCode} result=${payload.resultCode} posMode=${posMode.mode}")
@@ -427,25 +427,33 @@ class RnPosAndroidIntegrationModule : Module() {
         intent.putExtra("amount", String.format(Locale.US, "%.2f", amount / 100.0))
         intent.putExtra("skip_manual_input", true)
 
+        // The return address handed to SoftPOS is SoftPosProxyActivity, never this one.
+        //
+        // Re-launching the host Activity is what broke cancelled and declined transactions:
+        // Expo declares it `singleTask` and it is the root of its task, and Android answers an
+        // outside app re-launching such an Activity by resetting the task. The surface stayed
+        // attached and visible and stopped painting -- the white screen. The proxy is
+        // `singleTop`, never a task root, so re-launching it is uneventful.
+        //
+        // SoftPOS is still started from here with startActivityForResult, and the result still
+        // arrives in OnActivityResult below. Keeping the launch on this opaque Activity is what
+        // preserves the standard push transition; launching from the translucent proxy makes
+        // Android animate it as a modal instead.
+        if (doNotReturn == true) {
+          Diagnostics.note("1b. doNotReturn: omitting callback extras, SoftPOS will not return automatically")
+        } else {
+          // `callback_package` is deliberately not sent, matching the manual flow in the
+          // reference integration (PaymentActivity#putSoftPosCompatExtras). Sending both makes
+          // SoftPOS return twice: once because startActivityForResult resumes its caller, and
+          // again because the extras ask it to start that screen itself.
+          intent.putExtra("callback_activity", SoftPosProxyActivity::class.java.name)
+        }
+
         launchActivityKey = describeActivity(activity)
         launchConfigKey = describeConfig(activity)
         Diagnostics.note("1d. launch cfg ${launchConfigKey ?: "?"}")
-
-        // SoftPOS is launched from SoftPosProxyActivity rather than from here, and the proxy
-        // is what SoftPOS is told to call back. The host's Activity -- `singleTask` and the
-        // task root in every Expo app -- is deliberately kept out of that path; handing it to
-        // SoftPOS as `callback_activity` is what left the host on a white screen after a
-        // cancelled or declined transaction. See SoftPosProxyActivity for the mechanism, and
-        // PaymentActivity/MainActivity in MultiSafepay/pos-android-integration for the
-        // topology this mirrors.
-        val proxy = Intent(activity, SoftPosProxyActivity::class.java)
-        // No animation of its own: the operator should see one transition into SoftPOS, the
-        // same as before this Activity existed, not one into the proxy and another out of it.
-        proxy.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        proxy.putExtra(SoftPosProxyActivity.EXTRA_PAYMENT_INTENT, intent)
-        proxy.putExtra(SoftPosProxyActivity.EXTRA_DO_NOT_RETURN, doNotReturn == true)
-        activity.startActivity(proxy)
-        Diagnostics.note("1c. Started SoftPOS proxy from ${describeActivity(activity)} (class=$activityClass)")
+        activity.startActivityForResult(intent, SOFT_POS_REQUEST_CODE)
+        Diagnostics.note("1c. Launched SoftPOS from ${describeActivity(activity)}, callback=SoftPosProxyActivity req=$SOFT_POS_REQUEST_CODE")
       }
     }
 
