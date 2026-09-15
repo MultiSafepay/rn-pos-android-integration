@@ -17,10 +17,19 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
   // transactions: a result carrying both keys was parsed as a middleware callback.
   //
   //  - MSP Pay App (Sunmi): app-to-app, a new Intent carrying an int `status`.
-  //  - SoftPOS: launched with startActivityForResult, answers only through
-  //    onActivityResult with a String `result_status`. It never calls onNewIntent.
+  //  - SoftPOS: a String `result_status`, over *either* transport.
   //
-  // See https://github.com/MultiSafepay/pos-android-integration#softpos-callback
+  // The Tap to Pay documentation says SoftPOS "never calls onNewIntent" and answers
+  // only through onActivityResult. That is wrong: it relaunches `callback_activity` on
+  // every outcome -- completed, cancelled and declined alike -- so its result arrives
+  // as a new Intent. Verified on device; the old assumption is why cancelled and
+  // declined transactions were dropped and froze the host app.
+  //
+  // So the channel does not identify the contract -- the extras do. Dispatch on which
+  // extra is present, never on which callback fired. `result_status` is checked first
+  // because a declined SoftPOS result *also* carries an int `status` (the decline
+  // code), and reading that first is what sent it down the middleware branch, where it
+  // matched nothing and was discarded.
 
   override fun onNewIntent(intent: Intent?): Boolean {
     // on waking up from callback process results
@@ -30,13 +39,30 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
       return super.onNewIntent(intent)
     }
 
-    if (safeHasExtra(intent, "status")) {
+    val resultStatus = safeStringExtra(intent, "result_status")
+
+    if (resultStatus != null) {
+      val message = safeStringExtra(intent, "message")
+      val description = safeStringExtra(intent, "description")
+      Log.d(TAG, "Received SoftPOS callback via onNewIntent result_status=$resultStatus message=$message description=$description")
+      this.receivedCallbackIntent(softPosStatusOf(resultStatus))
+    } else if (safeHasExtra(intent, "status")) {
       val status = safeIntExtra(intent, "status") ?: 0
       val message = safeStringExtra(intent, "message")
       Log.d(TAG, "Received Pay App callback via status=$status message=$message")
       this.handleMiddlewareCallback(status, message)
     } else {
-      Log.w(TAG, "Pay App onNewIntent callback did not include a 'status' extra")
+      // Neither contract's key is present. Usually not a POS callback at all -- the host
+      // Activity is singleTask, so onNewIntent also fires on launcher relaunches and
+      // deep links -- but it could equally be a result whose shape changed. Report it
+      // and let the module discard it when no payment is outstanding: a stray intent
+      // costs a dropped log line, whereas a real result that reports nothing leaves the
+      // pay screen waiting forever.
+      //
+      // UNDEFINED, not CANCELLED: we do not know the outcome, and on an intent we could
+      // not parse the card may well have been charged. Never assert "not paid" here.
+      Log.w(TAG, "onNewIntent carried neither 'result_status' nor 'status'; reporting UNDEFINED")
+      this.receivedCallbackIntent(TransactionStatus.UNDEFINED)
     }
 
     return super.onNewIntent(intent)
@@ -51,17 +77,20 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
       return
     }
 
-    // The reference integration only reads a SoftPOS result when it comes back as
-    // RESULT_OK. If a declined transaction ever arrives with a different result code
-    // this log is the thing to look for: the result is dropped and the caller is left
-    // waiting, exactly the failure this file exists to prevent.
-    if (resultCode != Activity.RESULT_OK) {
-      Log.w(TAG, "SoftPOS result ignored; resultCode=$resultCode is not RESULT_OK, result_status=${data?.let { safeStringExtra(it, "result_status") }}")
-      return
-    }
-
+    // SoftPOS only answers RESULT_OK when the payment completed. Cancelled, declined
+    // and expired-card transactions come back as RESULT_CANCELED, still carrying the
+    // real outcome in `result_status`. Gating on RESULT_OK -- as the reference
+    // integration does -- therefore dropped exactly the results POSSD-2379 taught this
+    // method to parse, and the pay screen, which has no timeout, waited forever.
+    // The result code is now only a fallback for when there is no payload to read.
+    // Deliberately reports nothing. SoftPOS relaunches `callback_activity` with the
+    // real outcome on every transaction, and the order in which that Intent and this
+    // result arrive is not guaranteed -- both land before onResume. Reporting CANCELLED
+    // from here would, whenever this won the race, claim a completed payment was
+    // cancelled and then suppress the real status as a duplicate. The onNewIntent
+    // callback is the authoritative one; let it answer.
     if (data == null) {
-      Log.w(TAG, "SoftPOS result missing intent data; resultCode=$resultCode")
+      Log.w(TAG, "SoftPOS activity result carried no intent data; resultCode=$resultCode, awaiting the onNewIntent callback instead")
       return
     }
 
@@ -71,10 +100,12 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
 
     Log.d(TAG, "Received SoftPOS activity result result_status=$resultStatus message=$message description=$description")
 
-    // Only `result_status` is read here. A declined transaction also carries the
-    // decline code in `status`, and consulting that first sent the result down the
-    // middleware branch, where the code matched nothing and the callback was dropped.
-    val status = when (resultStatus?.uppercase(Locale.ROOT)) {
+    this.receivedCallbackIntent(softPosStatusOf(resultStatus))
+  }
+
+  // The SoftPOS contract, independent of which callback carried it.
+  private fun softPosStatusOf(resultStatus: String?): TransactionStatus =
+    when (resultStatus?.uppercase(Locale.ROOT)) {
       "COMPLETED" -> TransactionStatus.COMPLETED
       "CANCELLED" -> TransactionStatus.CANCELLED
       "DECLINED" -> TransactionStatus.DECLINED
@@ -83,9 +114,6 @@ class RnPosAndroidReactActivityLifecycleListener : ReactActivityLifecycleListene
         TransactionStatus.UNDEFINED
       }
     }
-
-    this.receivedCallbackIntent(status)
-  }
 
   private fun safeHasExtra(intent: Intent, key: String): Boolean {
     return try {

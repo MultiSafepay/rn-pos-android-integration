@@ -1,2 +1,36 @@
-<manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Android 11+ package visibility. Without these, the module's own lookups
+       (getLaunchIntentForPackage for SmartPOS, resolveActivity for SoftPOS) return
+       null on a correctly provisioned terminal and canInitiatePayment reports false.
+       Declared here so every consumer inherits them through manifest merging rather
+       than having to rediscover and repeat them in its own app config.
+
+       Both SmartPOS (Sunmi) packages are listed: a Sunmi terminal may carry the Pay
+       App as either `sunmi` or `nokernels`. The SoftPOS Pay App is a separate
+       integration and a separate package. -->
+  <queries>
+    <package android:name="com.multisafepay.pos.sunmi" />
+    <package android:name="com.multisafepay.pos.nokernels" />
+    <package android:name="com.phonepos.mspsoftposapp" />
+  </queries>
+
+  <application>
+    <!-- Fully qualified on purpose: a relative name in a library manifest resolves against
+         the *application's* package once the manifests are merged, not against this module's.
+
+         singleTop and never a task root, mirroring PaymentActivity in the reference
+         integration. Translucent, so the host stays visible behind it while SoftPOS starts,
+         and excluded from recents because it is plumbing rather than a screen. Exported
+         because its whole purpose is to be started by the SoftPOS app; it draws nothing and
+         finishes immediately, so there is no surface for that to expose. -->
+    <activity
+      android:name="expo.modules.rnposandroidintegration.SoftPosProxyActivity"
+      android:exported="true"
+      android:launchMode="singleTop"
+      android:excludeFromRecents="true"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+  </application>
+
 </manifest>
