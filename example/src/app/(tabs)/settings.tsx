@@ -22,6 +22,13 @@ const ENVIRONMENT_OPTIONS: Option<AppEnvironment>[] = [
   { label: 'Live', value: 'live' },
 ];
 
+type DebugPayloadSetting = 'off' | 'on';
+
+const DEBUG_PAYLOAD_OPTIONS: Option<DebugPayloadSetting>[] = [
+  { label: 'Off', value: 'off' },
+  { label: 'On', value: 'on' },
+];
+
 const SectionCard: FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <View className="gap-3">
     <Text className="ml-1 text-xs font-semibold uppercase tracking-wider text-muted">{label}</Text>
@@ -37,6 +44,9 @@ const Settings: FC = () => {
   const [apiKey, setApiKey] = useState<string | undefined>();
   const [posMode, setPosMode] = useState<PosMode>('sunmi-pos');
   const [environment, setEnvironment] = useState<AppEnvironment>(Storage.DEFAULT_ENVIRONMENT);
+  // Off until the stored value says otherwise, so the preview cannot flash on while
+  // the setting is still being read.
+  const [debugPayload, setDebugPayload] = useState<DebugPayloadSetting>('off');
 
   const appVersion = useMemo(
     () => `${Application.nativeApplicationVersion} · ${Application.nativeBuildVersion}`,
@@ -61,10 +71,11 @@ const Settings: FC = () => {
     let active = true;
     (async () => {
       try {
-        const [storedKey, storedMode, storedEnv] = await Promise.all([
+        const [storedKey, storedMode, storedEnv, storedDebug] = await Promise.all([
           Storage.getApiKey(),
           Storage.getPosMode(),
           Storage.getEnvironment(),
+          Storage.getDebugPayload(),
         ]);
         if (!active) {
           return;
@@ -73,6 +84,7 @@ const Settings: FC = () => {
         RnPosAndroidIntegration.setPosMode(mode);
         setPosMode(mode);
         setEnvironment(storedEnv);
+        setDebugPayload(storedDebug ? 'on' : 'off');
         if (storedKey) {
           setApiKey(storedKey);
         } else {
@@ -91,6 +103,11 @@ const Settings: FC = () => {
       active = false;
     };
   }, [onSaveApiKey]);
+
+  const onChangeDebugPayload = useCallback((option: DebugPayloadSetting) => {
+    setDebugPayload(option);
+    Storage.storeDebugPayload(option === 'on').catch((error) => Alert.alert('Error', (error as Error)?.message));
+  }, []);
 
   const onChangeEnvironment = useCallback((option: AppEnvironment) => {
     setEnvironment(option);
@@ -125,6 +142,18 @@ const Settings: FC = () => {
 
         <SectionCard label="Environment">
           <SegmentedControl options={ENVIRONMENT_OPTIONS} value={environment} onChange={onChangeEnvironment} />
+        </SectionCard>
+
+        <SectionCard label="Debug payload">
+          <SegmentedControl
+            options={DEBUG_PAYLOAD_OPTIONS}
+            value={debugPayload}
+            onChange={onChangeDebugPayload}
+          />
+          <Text className="ml-1 mt-2 text-xs text-muted">
+            Shows the exact Intent — extras, types and values — in a dialog before each payment, and logs the same
+            text. Off by default; leave it off outside debugging.
+          </Text>
         </SectionCard>
 
         <View className="mt-2 items-center gap-2">

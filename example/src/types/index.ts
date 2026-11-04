@@ -1,4 +1,4 @@
-import type { ImageSourcePropType } from 'react-native';
+import type { ImageProps } from 'expo-image';
 
 export type Category = 'Starters' | 'Mains' | 'Desserts' | 'Drinks';
 
@@ -8,7 +8,7 @@ export interface Product {
   price: number;
   category: Category;
   description?: string;
-  asset?: ImageSourcePropType;
+  asset?: ImageProps['source'];
   image?: string;
 }
 
