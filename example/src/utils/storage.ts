@@ -5,6 +5,7 @@ const Keys = {
   apiKey: 'api-key',
   posMode: 'pos-mode',
   environment: 'environment',
+  debugPayload: 'debug-payload',
 };
 
 export type AppEnvironment = 'dev' | 'test' | 'live';
@@ -44,6 +45,18 @@ const getEnvironment = async (): Promise<AppEnvironment> => {
   return DEFAULT_ENVIRONMENT;
 };
 
+const storeDebugPayload = async (value: boolean) => {
+  return await AsyncStorage.setItem(Keys.debugPayload, value ? 'on' : 'off');
+};
+
+/**
+ * Off unless explicitly turned on, including when the key is missing or holds
+ * anything unexpected -- the payload preview must never appear by accident.
+ */
+const getDebugPayload = async (): Promise<boolean> => {
+  return (await AsyncStorage.getItem(Keys.debugPayload)) === 'on';
+};
+
 const initializeDefaults = async () => {
   const apiKey = await getApiKey();
   if (!apiKey && DEFAULT_API_KEY) {
@@ -58,6 +71,8 @@ const Storage = {
   getPosMode,
   storeEnvironment,
   getEnvironment,
+  storeDebugPayload,
+  getDebugPayload,
   initializeDefaults,
   DEFAULT_ENVIRONMENT,
   DEFAULT_API_KEY,

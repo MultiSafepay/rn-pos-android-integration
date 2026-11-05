@@ -1,3 +1,4 @@
+import * as Application from 'expo-application';
 import * as RnPosAndroidIntegration from 'rn-pos-android-integration';
 import { CartItem, PretransactionData, PretransactionResponse, TransactionResponse } from 'src/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,13 +18,40 @@ const getApiDomain = (environment: AppEnvironment) => {
   }
 };
 
+/**
+ * A `shopping_cart.items` entry, as the MultiSafepay orders API expects it.
+ *
+ * `tax_table_selector` and `weight` are part of the API's schema too, but the
+ * demo catalog carries neither, so they are left out rather than invented --
+ * both are optional server-side.
+ */
+interface ShoppingCartItem {
+  name: string;
+  description: string;
+  /** Major units (euros), matching `Product.price`. Not cents. */
+  unit_price: number;
+  quantity: number;
+  merchant_item_id: string;
+}
+
+const toShoppingCart = (items: CartItem[]): { items: ShoppingCartItem[] } => ({
+  items: items.map(({ product, quantity }) => ({
+    name: product.name,
+    description: product.description ?? '',
+    unit_price: product.price,
+    quantity,
+    merchant_item_id: product.id.toString(),
+  })),
+});
+
 interface StartOrderRequest {
   apiKey: string;
   amount: number;
   orderId: string;
   description: string;
+  items?: CartItem[];
 }
-export const startOrder = async ({ apiKey, amount, orderId, description }: StartOrderRequest) => {
+export const startOrder = async ({ apiKey, amount, orderId, description, items }: StartOrderRequest) => {
   // Call the payment API
 
   const environment = await Storage.getEnvironment();
@@ -42,6 +70,9 @@ export const startOrder = async ({ apiKey, amount, orderId, description }: Start
     amount,
     description,
     //   gateway_info: { terminal_id: "TERMINAL_ID" },
+    // Only sent when there is something to send: the API rejects a
+    // `shopping_cart` whose `items` array is empty.
+    ...(items && items.length > 0 ? { shopping_cart: toShoppingCart(items) } : {}),
   });
 
   if (__DEV__) {
@@ -83,9 +114,21 @@ export const payOrder = async ({ cartItems }: PayOrderRequest) => {
 
   const posMode = (await Storage.getPosMode()) ?? 'sunmi-pos';
   RnPosAndroidIntegration.setPosMode(posMode);
+  // Demo app only, and only when the Settings toggle is on: show the exact Intent in
+  // an Alert before launching the payment app. Set on every payment, so switching the
+  // toggle off takes effect immediately. `applicationId` is passed because only the
+  // native side can read it, and it is what the module sends as `package_name` /
+  // `callback_package`.
+  const debugPayload = await Storage.getDebugPayload();
+  RnPosAndroidIntegration.setDebugMode(debugPayload, {
+    packageName: Application.applicationId ?? undefined,
+  });
 
-  const amount = cartItems.reduce((acc, item) => acc + item.product.price * 100 * item.quantity, 0);
-  const data = await startOrder({ apiKey, amount, orderId, description });
+  // Rounded per line: `price * 100` is not exact in binary floating point
+  // (0.1 * 100 === 10.000000000000002), and `amount` has to be whole cents --
+  // the API checks it against the shopping cart total now that we send one.
+  const amount = cartItems.reduce((acc, item) => acc + Math.round(item.product.price * 100) * item.quantity, 0);
+  const data = await startOrder({ apiKey, amount, orderId, description, items: cartItems });
 
   const canInitiatePayment = await RnPosAndroidIntegration.canInitiatePayment();
   if (!canInitiatePayment) {

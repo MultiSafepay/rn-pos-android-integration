@@ -1,6 +1,6 @@
 const { withAppBuildGradle } = require('expo/config-plugins');
 
-// AGP 8.x (RN 0.85) is compatible with desugar_jdk_libs 2.x.
+// AGP 8.x/9.x (RN 0.85+) is compatible with desugar_jdk_libs 2.x.
 const DESUGAR_JDK_LIBS = 'com.android.tools:desugar_jdk_libs:2.1.4';
 
 /**
